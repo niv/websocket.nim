@@ -4,47 +4,51 @@
 ## .. code-block::nim
 ##   var server = newAsyncHttpServer()
 ##
-##   proc cb(req: Request) {.async.} =
-##     handleWebsocketRequest(req):
-##       echo "New websocket customer!"
+##   if not await(verifyWebsocketRequest(req)):
+##     await req.respond(Http400, "This is a websocket endpoint.")
+##     req.client.close
 ##
-##       while true:
-##         try:
-##           var f = await req.client.readData()
-##           echo f
-##         except ProtocolError, IOError:
-##           break
+##   else:
+##     echo "New websocket customer arrived!"
+##     while true:
+##       try:
+##         var f = await req.client.readData(false)
+##         echo f
+##         await req.client.sendText("thanks for the data!", false)
 ##
-##       echo "Socket went away"
-##       req.client.close()
+##       except ProtocolError, IOError:
+##         echo getCurrentExceptionMsg()
+##         break
+##
+##     req.client.close()
+##     echo ".. socket went away."
 
 import asyncnet, asyncdispatch, asynchttpserver, strtabs, base64, securehash
 
+import private/hex
+
 import shared
 
-
-template handleWebsocketRequest*(req: Request, body: stmt): stmt {.immediate.} =
-  ## Does all the websockety connection upgrade for you.
-  ## Will respond with Http400 and close the socket if the request is not
-  ## from a websocket endpoint.
+proc verifyWebsocketRequest*(req: Request): Future[bool] {.async.} =
+  ## Verifies the request is a websocket request. If so, it sends out the
+  ## connection upgrade magic for you; leaving the socket in a state where
+  ## you can immediately start receiving/sending frames.
 
   if not req.headers.hasKey("sec-websocket-key"):
-    waitFor req.respond(Http400, "This is a websocket endpoint.")
-    req.client.close
+    result = false
+    # await req.respond(Http400, "This is a websocket endpoint.")
+    # req.client.close
 
   else:
     let sh = secureHash(req.headers["sec-websocket-key"] &
       "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
     let acceptKey = decodeHex($sh).encode
 
-    waitFor req.client.send("HTTP/1.1 101 Web Socket Protocol Handshake\c\L")
-    waitFor req.client.send("Sec-Websocket-Accept: " & acceptKey & "\c\L")
-    waitFor req.client.send("Connection: Upgrade\c\L")
-    waitFor req.client.send("Upgrade: websocket\c\L")
-    waitFor req.client.send("\c\L")
+    await req.client.send("HTTP/1.1 101 Web Socket Protocol Handshake\c\L")
+    await req.client.send("Sec-Websocket-Accept: " & acceptKey & "\c\L")
+    await req.client.send("Connection: Upgrade\c\L")
+    await req.client.send("Upgrade: websocket\c\L")
+    await req.client.send("\c\L")
 
-    body
+    result = true
 
-
-
-# proc respondWithWebsocket(req: Request)
