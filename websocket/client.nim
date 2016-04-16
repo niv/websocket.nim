@@ -31,13 +31,18 @@ import private/hex
 type
   AsyncWebSocketObj = object of RootObj
     sock*: AsyncSocket
+    protocol*: string
 
   AsyncWebSocket* = ref AsyncWebSocketObj
 
 proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
-    additionalHeaders: seq[(string, string)] = @[]): Future[AsyncWebSocket] {.async.} =
+    additionalHeaders: seq[(string, string)] = @[],
+    protocols: seq[string] = @[]): Future[AsyncWebSocket] {.async.} =
 
   ## Create a new websocket and connect immediately.
+  ## Optionally give a list of protocols to negotiate; keep empty to accept the
+  ## one the server offers (if any).
+  ## The negotiated protocol is in `AsyncWebSocket.protocol`.
 
   let key = encode($(getTime().int))
 
@@ -58,6 +63,8 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
   await s.send("Cache-Control: no-cache\r\n")
   await s.send("Sec-WebSocket-Key: " & key & "\r\n")
   await s.send("Sec-WebSocket-Version: 13\r\n")
+  if protocols.len > 0:
+    await s.send("Sec-WebSocket-Protocol: " & protocols.join(", ") & "\r\n")
   for h in additionalHeaders:
     await s.send(h[0] & ": " & h[1] & "\r\n")
 
@@ -69,11 +76,20 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     raise newException(ProtocolError,
       "server did not reply with a websocket upgrade: " & hdr)
 
+  let ws = new AsyncWebSocket
+  ws.sock = s
+
   while true:
     let ln = await s.recvLine()
     if ln == "\r\L": break
     let sp = ln.split(": ")
     if sp.len < 2: continue
+    echo sp
+    if sp[0].toLower == "sec-websocket-protocol":
+      if protocols.len > 0 and protocols.find(sp[1]) == -1:
+        raise newException(ProtocolError, "server does not support any of our protocols")
+      else: ws.protocol = sp[1]
+
     # raise newException(ProtocolError, "unknown server response " & ln)
     if sp[0].toLower == "sec-websocket-accept":
       # The server appends the fixed string 258EAFA5-E914-47DA-95CA-C5AB0DC85B11
@@ -85,8 +101,6 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
       if theirs != decodeHex($expected).encode:
         raise newException(ProtocolError, "websocket-key did not match. proxy messing with you?")
 
-  let ws = new AsyncWebSocket
-  ws.sock = s
   result = ws
 
 # proc sendFrameData(ws: AsyncWebSocket, data: string): Future[void] {.async.} =
