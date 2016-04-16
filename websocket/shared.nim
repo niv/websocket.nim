@@ -38,21 +38,22 @@ proc makeFrame*(f: Frame): string =
   var b0: byte = (f.opcode.byte and 0x0f)
   b0 = b0 or (1 shl 7) # fin
 
-  ret.write(b0)
+  ret.write(byte b0)
 
   var b1: byte = 0
 
-  if f.data.len < 0x7e: b1 = f.data.len.uint8
-  elif f.data.len >= 0x7e and f.data.len < 0x7fff: b1 = 126
-  else: raise newException(ProtocolError, "64bit length not supported yet")
+  if f.data.len <= 125: b1 = f.data.len.uint8
+  elif f.data.len > 125 and f.data.len <= 0x7fff: b1 = 126u8
+  else: b1 = 127u8
 
   if f.masked: b1 = b1 or (1 shl 7)
 
-  ret.write(b1)
+  ret.write(byte b1)
 
-  if f.data.len >= 0x7e and f.data.len < 0x7fff:
-    ret.write(b1)
-    ret.write(f.data.len.int16.htons.uint16)
+  if f.data.len > 125 and f.data.len <= 0x7fff:
+    ret.write(int16 f.data.len.int16.htons)
+  elif f.data.len > 0x7fff:
+    ret.write(int64 f.data.len.int32.htonl)
 
   var data = f.data
 
@@ -69,6 +70,13 @@ proc makeFrame*(f: Frame): string =
   ret.write(data)
   ret.setPosition(0)
   result = ret.readAll()
+
+  assert(result.len == (
+    2 +
+    (if f.masked: 4 else: 0) +
+    (if b1 == 126: 2 elif b1 == 127: 8 else: 0) +
+    data.len
+  ))
 
 proc makeFrame*(opcode: Opcode, data: string, masked: bool): string =
   ## A convenience shorthand.
@@ -97,10 +105,6 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
   f.rsv3 = b0[3]
   f.opcode = (b0 and 0x0f).Opcode
 
-  if not f.fin:
-    raise newException(ProtocolError,
-      "fragmented packets not supported yet")
-
   if f.rsv1 or f.rsv2 or f.rsv3:
     raise newException(ProtocolError,
       "websocket tried to use non-negotiated extension")
@@ -115,7 +119,11 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
     finalLen = cast[ptr int16](lenstr[0].addr)[].htons
 
   elif hdrLen == 0x7f:
-    raise newException(ProtocolError, "64bit length not supported yet")
+    var lenstr = await(ws.recv(8, {}))
+    if lenstr.len != 8: raise newException(IOError, "socket closed")
+    # we just assume it's a 32bit int, since no websocket will EVER
+    # send more than 2GB of data in a single packet. Right? Right?
+    finalLen = cast[ptr int32](lenstr[4].addr)[].htonl
 
   else:
     finalLen = hdrLen
@@ -158,6 +166,7 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
   ## websocket-related issues.
 
   var resultData = ""
+  var resultOpcode: Opcode
   while true:
     let f = await ws.recvFrame()
     # Merge sequentially read frames.
@@ -183,7 +192,11 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
 
         else: discard  # thanks, i guess?
 
+      of Opcode.Cont:
+        if not f.fin: continue
+
       of Opcode.Text, OpCode.Binary:
+        resultOpcode = f.opcode
         # read another!
         if not f.fin: continue
 
@@ -191,7 +204,7 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
         ws.close()
         raise newException(ProtocolError, "received invalid opcode: " & $f.opcode)
 
-    result = (f.opcode, resultData)
+    result = (resultOpcode, resultData)
     return
 
 
