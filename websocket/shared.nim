@@ -195,7 +195,7 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
       of Opcode.Cont:
         if not f.fin: continue
 
-      of Opcode.Text, OpCode.Binary:
+      of Opcode.Text, Opcode.Binary:
         resultOpcode = f.opcode
         # read another!
         if not f.fin: continue
