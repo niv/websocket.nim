@@ -46,6 +46,7 @@ proc makeFrame*(f: Frame): string =
   elif f.data.len > 125 and f.data.len <= 0x7fff: b1 = 126u8
   else: b1 = 127u8
 
+  let b1unmasked = b1
   if f.masked: b1 = b1 or (1 shl 7)
 
   ret.write(byte b1)
@@ -74,7 +75,7 @@ proc makeFrame*(f: Frame): string =
   assert(result.len == (
     2 +
     (if f.masked: 4 else: 0) +
-    (if b1 == 126: 2 elif b1 == 127: 8 else: 0) +
+    (if b1unmasked == 126u8: 2 elif b1unmasked == 127u8: 8 else: 0) +
     data.len
   ))
 
