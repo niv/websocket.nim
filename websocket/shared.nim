@@ -1,5 +1,5 @@
 import asyncdispatch, asyncnet, streams, nativesockets, strutils, tables,
-  times, oids, math, random
+  times, oids, random
 
 type
   ProtocolError* = object of Exception
