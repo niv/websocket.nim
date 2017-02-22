@@ -22,7 +22,7 @@
 ##   runForever()
 
 import net, asyncdispatch, asyncnet, base64, times, strutils, securehash,
-  nativesockets, streams, tables, oids
+  nativesockets, streams, tables, oids, uri
 
 import shared
 
@@ -55,23 +55,23 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
       ctx.wrapSocket(s)
 
   await s.connect(host, port)
-  await s.send("GET " & path & " HTTP/1.1\r\n")
+  await s.send("GET " & path & " HTTP/1.1\c\L")
   if port != Port(80):
-    await s.send("Host: " & host & ":" & $port & "\r\n")
+    await s.send("Host: " & host & ":" & $port & "\c\L")
   else:
-    await s.send("Host: " & host & "\r\n")
-  await s.send("User-Agent: justatest\r\n")
-  await s.send("Upgrade: websocket\r\n")
-  await s.send("Connection: Upgrade\r\n")
-  await s.send("Cache-Control: no-cache\r\n")
-  await s.send("Sec-WebSocket-Key: " & key & "\r\n")
-  await s.send("Sec-WebSocket-Version: 13\r\n")
+    await s.send("Host: " & host & "\c\L")
+  await s.send("User-Agent: justatest\c\L")
+  await s.send("Upgrade: websocket\c\L")
+  await s.send("Connection: Upgrade\c\L")
+  await s.send("Cache-Control: no-cache\c\L")
+  await s.send("Sec-WebSocket-Key: " & key & "\c\L")
+  await s.send("Sec-WebSocket-Version: 13\c\L")
   if protocols.len > 0:
-    await s.send("Sec-WebSocket-Protocol: " & protocols.join(", ") & "\r\n")
+    await s.send("Sec-WebSocket-Protocol: " & protocols.join(", ") & "\c\L")
   for h in additionalHeaders:
-    await s.send(h[0] & ": " & h[1] & "\r\n")
+    await s.send(h[0] & ": " & h[1] & "\c\L")
 
-  await s.send("\r\n")
+  await s.send("\c\L")
 
   let hdr = await s.recvLine()
   if not hdr.startsWith("HTTP/1.1 101 "):
@@ -105,6 +105,21 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
         raise newException(ProtocolError, "websocket-key did not match. proxy messing with you?")
 
   result = ws
+
+proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[], 
+    protocols: seq[string] = @[]): Future[AsyncWebSocket] {.async.} =
+  let uriBuf = parseUri(uri)
+  var ssl: bool
+  if uriBuf.scheme == "ws":
+    ssl = false
+  elif uriBuf.scheme == "wss":
+    ssl = true
+  else:
+    raise newException(ProtocolError, "uri scheme has to be 'ws' for plaintext or 'wss' for websocket over ssl.")
+
+  let port = Port (uriBuf.port.parseInt())
+  return await newAsyncWebsocket(uriBuf.hostname, port , uriBuf.path, ssl, additionalHeaders, protocols)
+
 
 # proc sendFrameData(ws: AsyncWebSocket, data: string): Future[void] {.async.} =
 #   await ws.sock.send(data)
