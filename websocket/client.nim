@@ -106,20 +106,23 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
 
   result = ws
 
-proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[], 
+proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[], 
     protocols: seq[string] = @[]): Future[AsyncWebSocket] {.async.} =
-  let uriBuf = parseUri(uri)
   var ssl: bool
-  if uriBuf.scheme == "ws":
+  if uri.scheme == "ws":
     ssl = false
-  elif uriBuf.scheme == "wss":
+  elif uri.scheme == "wss":
     ssl = true
   else:
     raise newException(ProtocolError, "uri scheme has to be 'ws' for plaintext or 'wss' for websocket over ssl.")
 
-  let port = Port (uriBuf.port.parseInt())
-  return await newAsyncWebsocket(uriBuf.hostname, port , uriBuf.path, ssl, additionalHeaders, protocols)
-
+  let port = Port(uri.port.parseInt())
+  return await newAsyncWebsocket(uri.hostname, port , uri.path, ssl, additionalHeaders, protocols)
+  
+proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[], 
+    protocols: seq[string] = @[]): Future[AsyncWebSocket] {.async.} =
+  let uriBuf = parseUri(uri)
+  return await newAsyncWebsocket(uriBuf, additionalHeaders, protocols)
 
 # proc sendFrameData(ws: AsyncWebSocket, data: string): Future[void] {.async.} =
 #   await ws.sock.send(data)
