@@ -2,6 +2,8 @@
 ## -------
 ##
 ## .. code-block::nim
+##   import websocket, asynchttpserver, asyncnet, asyncdispatch
+##
 ##   var server = newAsyncHttpServer()
 ##   proc cb(req: Request) {.async.} =
 ##

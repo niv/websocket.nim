@@ -2,6 +2,8 @@
 ## -------
 ##
 ## .. code-block::nim
+##   import websocket, asyncnet, asyncdispatch
+##
 ##   let ws = waitFor newAsyncWebsocket("echo.websocket.org",
 ##     Port 80, "/?encoding=text", ssl = false)
 ##   echo "connected!"
