@@ -28,6 +28,8 @@ import shared
 
 import private/hex
 
+const WebsocketUserAgent* = "websocket.nim (https://github.com/niv/websocket.nim)"
+
 type
   AsyncWebSocketObj = object of RootObj
     sock*: AsyncSocket
@@ -37,8 +39,9 @@ type
 
 proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     additionalHeaders: seq[(string, string)] = @[],
-    protocols: seq[string] = @[]): Future[AsyncWebSocket] {.async.} =
-
+    protocols: seq[string] = @[],
+    userAgent: string = WebsocketUserAgent
+   ): Future[AsyncWebSocket] {.async.} =
   ## Create a new websocket and connect immediately.
   ## Optionally give a list of protocols to negotiate; keep empty to accept the
   ## one the server offers (if any).
@@ -60,7 +63,7 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     await s.send("Host: " & host & ":" & $port & "\c\L")
   else:
     await s.send("Host: " & host & "\c\L")
-  await s.send("User-Agent: justatest\c\L")
+  await s.send("User-Agent: " & userAgent & "\c\L")
   await s.send("Upgrade: websocket\c\L")
   await s.send("Connection: Upgrade\c\L")
   await s.send("Cache-Control: no-cache\c\L")
@@ -107,7 +110,9 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
   result = ws
 
 proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[], 
-    protocols: seq[string] = @[]): Future[AsyncWebSocket] {.async.} =
+    protocols: seq[string] = @[],
+    userAgent: string = WebsocketUserAgent
+   ): Future[AsyncWebSocket] {.async.} =
   var ssl: bool
   if uri.scheme == "ws":
     ssl = false
@@ -117,12 +122,15 @@ proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[]
     raise newException(ProtocolError, "uri scheme has to be 'ws' for plaintext or 'wss' for websocket over ssl.")
 
   let port = Port(uri.port.parseInt())
-  return await newAsyncWebsocket(uri.hostname, port , uri.path, ssl, additionalHeaders, protocols)
+  return await newAsyncWebsocket(uri.hostname, port , uri.path, ssl,
+    additionalHeaders, protocols, WebsocketUserAgent)
   
 proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[], 
-    protocols: seq[string] = @[]): Future[AsyncWebSocket] {.async.} =
+    protocols: seq[string] = @[],
+    userAgent: string = WebsocketUserAgent
+   ): Future[AsyncWebSocket] {.async.} =
   let uriBuf = parseUri(uri)
-  return await newAsyncWebsocket(uriBuf, additionalHeaders, protocols)
+  return await newAsyncWebsocket(uriBuf, additionalHeaders, protocols, WebsocketUserAgent)
 
 # proc sendFrameData(ws: AsyncWebSocket, data: string): Future[void] {.async.} =
 #   await ws.sock.send(data)
