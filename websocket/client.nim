@@ -125,14 +125,14 @@ proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[]
 
   let port = Port(uri.port.parseInt())
   return await newAsyncWebsocket(uri.hostname, port , uri.path, ssl,
-    additionalHeaders, protocols, WebsocketUserAgent)
+    additionalHeaders, protocols, userAgent)
   
 proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[], 
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent
    ): Future[AsyncWebSocket] {.async.} =
   let uriBuf = parseUri(uri)
-  return await newAsyncWebsocket(uriBuf, additionalHeaders, protocols, WebsocketUserAgent)
+  return await newAsyncWebsocket(uriBuf, additionalHeaders, protocols, userAgent)
 
 # proc sendFrameData(ws: AsyncWebSocket, data: string): Future[void] {.async.} =
 #   await ws.sock.send(data)
