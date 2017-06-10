@@ -146,7 +146,8 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
 # Internal hashtable that tracks pings sent out, per socket.
 # key is the socket fd
 type PingRequest = Future[void] # tuple[data: string, fut: Future[void]]
-var reqPing = initTable[int, PingRequest]()
+var reqPing {.threadvar.}: Table[int, PingRequest]
+reqPing = initTable[int, PingRequest]()
 
 proc readData*(ws: AsyncSocket, isClientSocket: bool):
     Future[tuple[opcode: Opcode, data: string]] {.async.} =
