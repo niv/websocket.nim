@@ -42,7 +42,8 @@ type
 proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
-    userAgent: string = WebsocketUserAgent
+    userAgent: string = WebsocketUserAgent,
+    ctx: SslContext = newContext(protTLSv1)
    ): Future[AsyncWebSocket] {.async.} =
   ## Create a new websocket and connect immediately.
   ## Optionally give a list of protocols to negotiate; keep empty to accept the
@@ -56,7 +57,6 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     when not defined(ssl):
       raise newException(Exception, "Cannot connect over SSL without -d:ssl")
     else:
-      let ctx = newContext(protTLSv1)
       ctx.wrapSocket(s)
 
   await s.connect(host, port)
