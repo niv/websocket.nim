@@ -61,10 +61,7 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
 
   await s.connect(host, port)
   await s.send("GET " & path & " HTTP/1.1\c\L")
-  if port != Port(80):
-    await s.send("Host: " & host & ":" & $port & "\c\L")
-  else:
-    await s.send("Host: " & host & "\c\L")
+  await s.send("Host: " & host & "\c\L")
   await s.send("User-Agent: " & userAgent & "\c\L")
   await s.send("Upgrade: websocket\c\L")
   await s.send("Connection: Upgrade\c\L")
