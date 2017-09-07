@@ -43,7 +43,7 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = newContext(protTLSv1)
+    sslVerifyMode: SslCVerifyMode = CVerifyPeer
    ): Future[AsyncWebSocket] {.async.} =
   ## Create a new websocket and connect immediately.
   ## Optionally give a list of protocols to negotiate; keep empty to accept the
@@ -57,6 +57,7 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     when not defined(ssl):
       raise newException(Exception, "Cannot connect over SSL without -d:ssl")
     else:
+      let ctx = newContext(protTLSv1, verifyMode = sslVerifyMode)
       ctx.wrapSocket(s)
 
   await s.connect(host, port)
@@ -113,7 +114,8 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
 
 proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[], 
     protocols: seq[string] = @[],
-    userAgent: string = WebsocketUserAgent
+    userAgent: string = WebsocketUserAgent,
+    sslVerifyMode: SslCVerifyMode = CVerifyPeer
    ): Future[AsyncWebSocket] {.async.} =
   var ssl: bool
   if uri.scheme == "ws":
@@ -125,14 +127,15 @@ proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[]
 
   let port = Port(uri.port.parseInt())
   return await newAsyncWebsocket(uri.hostname, port , uri.path, ssl,
-    additionalHeaders, protocols, userAgent)
+    additionalHeaders, protocols, userAgent, sslVerifyMode)
   
 proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[], 
     protocols: seq[string] = @[],
-    userAgent: string = WebsocketUserAgent
+    userAgent: string = WebsocketUserAgent,
+    sslVerifyMode: SslCVerifyMode = CVerifyPeer
    ): Future[AsyncWebSocket] {.async.} =
   let uriBuf = parseUri(uri)
-  return await newAsyncWebsocket(uriBuf, additionalHeaders, protocols, userAgent)
+  return await newAsyncWebsocket(uriBuf, additionalHeaders, protocols, userAgent, sslVerifyMode)
 
 # proc sendFrameData(ws: AsyncWebSocket, data: string): Future[void] {.async.} =
 #   await ws.sock.send(data)
