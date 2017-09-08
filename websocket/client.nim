@@ -32,18 +32,11 @@ import private/hex
 
 const WebsocketUserAgent* = "websocket.nim (https://github.com/niv/websocket.nim)"
 
-type
-  AsyncWebSocketObj = object of RootObj
-    sock*: AsyncSocket
-    protocol*: string
-
-  AsyncWebSocket* = ref AsyncWebSocketObj
-
 proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    sslVerifyMode: SslCVerifyMode = CVerifyPeer
+    verifySsl: bool = true 
    ): Future[AsyncWebSocket] {.async.} =
   ## Create a new websocket and connect immediately.
   ## Optionally give a list of protocols to negotiate; keep empty to accept the
@@ -57,21 +50,27 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     when not defined(ssl):
       raise newException(Exception, "Cannot connect over SSL without -d:ssl")
     else:
-      let ctx = newContext(protTLSv1, verifyMode = sslVerifyMode)
-      ctx.wrapSocket(s)
+      if verifySsl:
+        let ctx = newContext(protTLSv1)
+        ctx.wrapSocket(s)
+      else: 
+        let ctx = newContext(protTLSv1, verifyMode = CVerifyNone)
+        ctx.wrapSocket(s)
 
   await s.connect(host, port)
   await s.send("GET " & path & " HTTP/1.1\c\L")
-  if port != Port(80):
+  if port != Port(80) or port != Port(443):
     await s.send("Host: " & host & ":" & $port & "\c\L")
   else:
     await s.send("Host: " & host & "\c\L")
   await s.send("User-Agent: " & userAgent & "\c\L")
   await s.send("Upgrade: websocket\c\L")
+  await s.send("Pragma: no-cache\c\L")
   await s.send("Connection: Upgrade\c\L")
   await s.send("Cache-Control: no-cache\c\L")
   await s.send("Sec-WebSocket-Key: " & key & "\c\L")
   await s.send("Sec-WebSocket-Version: 13\c\L")
+  await s.send("Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits\c\L")
   if protocols.len > 0:
     await s.send("Sec-WebSocket-Protocol: " & protocols.join(", ") & "\c\L")
   for h in additionalHeaders:
@@ -87,13 +86,14 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
 
   let ws = new AsyncWebSocket
   ws.sock = s
+  ws.isClient = true
 
   while true:
     let ln = await s.recvLine()
     if ln == "\r\L": break
     let sp = ln.split(": ")
+    echo(sp)
     if sp.len < 2: continue
-    echo sp
     if sp[0].toLower == "sec-websocket-protocol":
       if protocols.len > 0 and protocols.find(sp[1]) == -1:
         raise newException(ProtocolError, "server does not support any of our protocols")
@@ -110,12 +110,12 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
       if theirs != decodeHex($expected).encode:
         raise newException(ProtocolError, "websocket-key did not match. proxy messing with you?")
 
-  result = ws
+  return ws
 
 proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[], 
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    sslVerifyMode: SslCVerifyMode = CVerifyPeer
+    verifySsl: bool = true 
    ): Future[AsyncWebSocket] {.async.} =
   var ssl: bool
   if uri.scheme == "ws":
@@ -124,18 +124,26 @@ proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[]
     ssl = true
   else:
     raise newException(ProtocolError, "uri scheme has to be 'ws' for plaintext or 'wss' for websocket over ssl.")
-
-  let port = Port(uri.port.parseInt())
+  
+  var port: Port
+  if uri.port == "":
+    if ssl: 
+      port = 443.Port 
+    else: 
+      port = 80.Port 
+  else: 
+    port = Port(uri.port.parseInt())
+      
   return await newAsyncWebsocket(uri.hostname, port , uri.path, ssl,
-    additionalHeaders, protocols, userAgent, sslVerifyMode)
+    additionalHeaders, protocols, userAgent, verifySsl)
   
 proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[], 
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    sslVerifyMode: SslCVerifyMode = CVerifyPeer
+    verifySsl: bool = true 
    ): Future[AsyncWebSocket] {.async.} =
   let uriBuf = parseUri(uri)
-  return await newAsyncWebsocket(uriBuf, additionalHeaders, protocols, userAgent, sslVerifyMode)
+  return await newAsyncWebsocket(uriBuf, additionalHeaders, protocols, userAgent, verifySsl)
 
 # proc sendFrameData(ws: AsyncWebSocket, data: string): Future[void] {.async.} =
 #   await ws.sock.send(data)
@@ -144,7 +152,8 @@ proc close*(ws: AsyncWebSocket): Future[void] {.async.} =
   ## Closes the socket.
 
   defer: ws.sock.close()
-  await ws.sock.send(makeFrame(Opcode.Close, "", true))
+  var se = makeFrame(Opcode.Close, "", true)
+  await ws.sock.send(se[0].addr, se.len)
 
 # proc readData(ws: AsyncWebSocket): auto {.async.} =
 #   ## This is an alias for
