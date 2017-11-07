@@ -112,7 +112,7 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
 
   var finalLen: int = 0
 
-  let hdrLen = b1 and 0x7f
+  let hdrLen = int(b1 and 0x7f)
   if hdrLen == 0x7e:
     var lenstr = await(ws.recv(2, {}))
     if lenstr.len != 2: raise newException(IOError, "socket closed")
