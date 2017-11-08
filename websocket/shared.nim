@@ -146,7 +146,6 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
 # Internal hashtable that tracks pings sent out, per socket.
 # key is the socket fd
 type PingRequest = Future[void] # tuple[data: string, fut: Future[void]]
-var reqPing = initTable[int, PingRequest]()
 
 proc readData*(ws: AsyncSocket, isClientSocket: bool):
     Future[tuple[opcode: Opcode, data: string]] {.async.} =
@@ -165,7 +164,7 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
   ##
   ## Will raise IOError when the socket disconnects and ProtocolError on any
   ## websocket-related issues.
-
+  var reqPing = initTable[int, PingRequest]()
   var resultData = ""
   var resultOpcode: Opcode
   while true:
