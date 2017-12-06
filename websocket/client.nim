@@ -113,7 +113,8 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
 
 proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
-    userAgent: string = WebsocketUserAgent
+    userAgent: string = WebsocketUserAgent,
+    ctx: SslContext = newContext(protTLSv1)
    ): Future[AsyncWebSocket] {.async.} =
   var ssl: bool
   if uri.scheme == "ws":
@@ -125,14 +126,15 @@ proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[]
 
   let port = Port(uri.port.parseInt())
   result = await newAsyncWebsocket(uri.hostname, port, uri.path, ssl,
-    additionalHeaders, protocols, userAgent)
+    additionalHeaders, protocols, userAgent, ctx)
 
 proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
-    userAgent: string = WebsocketUserAgent
+    userAgent: string = WebsocketUserAgent,
+    ctx: SslContext = newContext(protTLSv1)
    ): Future[AsyncWebSocket] {.async.} =
   let uriBuf = parseUri(uri)
-  result = await newAsyncWebsocket(uriBuf, additionalHeaders, protocols, userAgent)
+  result = await newAsyncWebsocket(uriBuf, additionalHeaders, protocols, userAgent, ctx)
 
 # proc sendFrameData(ws: AsyncWebSocket, data: string): Future[void] {.async.} =
 #   await ws.sock.send(data)
