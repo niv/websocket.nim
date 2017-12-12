@@ -89,8 +89,9 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
   ##
   ## You probably want to use the higher-level variant, `readData`.
 
+  const lookupTable = [128u8, 64, 32, 16, 8, 4, 2, 1]
+
   template `[]`(b: byte, idx: int): bool =
-    const lookupTable = [128u8, 64, 32, 16, 8, 4, 2, 1]
     (b and lookupTable[idx]) != 0
 
   var f: Frame
@@ -212,8 +213,7 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
         ws.close()
         raise newException(ProtocolError, "received invalid opcode: " & $f.opcode)
 
-    result = (resultOpcode, resultData)
-    return
+    return (resultOpcode, resultData)
 
 
 proc sendText*(ws: AsyncSocket, p: string, masked: bool): Future[void] {.async.} =

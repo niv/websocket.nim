@@ -60,23 +60,23 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
       ctx.wrapSocket(s)
 
   await s.connect(host, port)
-  await s.send("GET " & path & " HTTP/1.1\c\L")
+  var msg = "GET " & path & " HTTP/1.1\c\L"
   if port != Port(80):
-    await s.send("Host: " & host & ":" & $port & "\c\L")
+    msg.add("Host: " & host & ":" & $port & "\c\L")
   else:
-    await s.send("Host: " & host & "\c\L")
-  await s.send("User-Agent: " & userAgent & "\c\L")
-  await s.send("Upgrade: websocket\c\L")
-  await s.send("Connection: Upgrade\c\L")
-  await s.send("Cache-Control: no-cache\c\L")
-  await s.send("Sec-WebSocket-Key: " & key & "\c\L")
-  await s.send("Sec-WebSocket-Version: 13\c\L")
+    msg.add("Host: " & host & "\c\L")
+  msg.add("User-Agent: " & userAgent & "\c\L")
+  msg.add("Upgrade: websocket\c\L")
+  msg.add("Connection: Upgrade\c\L")
+  msg.add("Cache-Control: no-cache\c\L")
+  msg.add("Sec-WebSocket-Key: " & key & "\c\L")
+  msg.add("Sec-WebSocket-Version: 13\c\L")
   if protocols.len > 0:
-    await s.send("Sec-WebSocket-Protocol: " & protocols.join(", ") & "\c\L")
+    msg.add("Sec-WebSocket-Protocol: " & protocols.join(", ") & "\c\L")
   for h in additionalHeaders:
-    await s.send(h[0] & ": " & h[1] & "\c\L")
+    msg.add(h[0] & ": " & h[1] & "\c\L")
 
-  await s.send("\c\L")
+  await s.send(msg)
 
   let hdr = await s.recvLine()
   if not hdr.startsWith("HTTP/1.1 101 "):
@@ -111,7 +111,7 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
 
   result = ws
 
-proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[], 
+proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = newContext(protTLSv1)
@@ -127,8 +127,8 @@ proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[]
   let port = Port(uri.port.parseInt())
   result = await newAsyncWebsocket(uri.hostname, port, uri.path, ssl,
     additionalHeaders, protocols, userAgent, ctx)
-  
-proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[], 
+
+proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = newContext(protTLSv1)

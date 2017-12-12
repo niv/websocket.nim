@@ -63,9 +63,8 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
     # TODO: transparently support extensions
     discard
 
-  if not req.headers.hasKey("sec-websocket-version") or
-      req.headers["sec-websocket-version"] != "13":
-    result = (false, "the only supported sec-wrbsocket-version is 13")
+  if req.headers.getOrDefault("sec-websocket-version") != "13":
+    result = (false, "the only supported sec-websocket-version is 13")
     return
 
   if not req.headers.hasKey("sec-websocket-key"):
@@ -75,11 +74,11 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   let cliWantsProt = req.headers.hasKey("sec-websocket-protocol")
 
   if cliWantsProt and protocol == "":
-    result = ( false, "server does not support protocol negotiation" )
+    result = (false, "server does not support protocol negotiation")
     return
 
-  if (not cliwantsProt) and protocol != "":
-    result = ( false, "no protocol advertised, but server demands `" & protocol & "`" )
+  if not cliwantsProt and protocol != "":
+    result = (false, "no protocol advertised, but server demands `" & protocol & "`")
     return
 
   if cliwantsProt and protocol != "":
@@ -87,19 +86,18 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
       mapIt(it.strip.tolower)
 
     if wants.find(protocol.tolower) == -1:
-      result = ( false, "no advertised protocol supported; server speaks `" & $protocol & "`" )
+      result = (false, "no advertised protocol supported; server speaks `" & $protocol & "`" )
       return
 
   let sh = secureHash(req.headers["sec-websocket-key"] &
     "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
   let acceptKey = decodeHex($sh).encode
+  var msg = "HTTP/1.1 101 Web Socket Protocol Handshake\c\L"
+  msg.add("Sec-Websocket-Accept: " & acceptKey & "\c\L")
+  msg.add("Connection: Upgrade\c\L")
+  msg.add("Upgrade: websocket\c\L")
+  if protocol != "": msg.add("Sec-Websocket-Protocol: " & protocol & "\c\L")
+  msg.add "\c\L"
+  await req.client.send(msg)
 
-  await req.client.send("HTTP/1.1 101 Web Socket Protocol Handshake\c\L")
-  await req.client.send("Sec-Websocket-Accept: " & acceptKey & "\c\L")
-  await req.client.send("Connection: Upgrade\c\L")
-  await req.client.send("Upgrade: websocket\c\L")
-  if protocol != "": await req.client.send("Sec-Websocket-Protocol: " & protocol & "\c\L")
-  await req.client.send("\c\L")
-
-  result = ( true, "" )
-
+  result = (true, "")
