@@ -75,6 +75,7 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     msg.add("Sec-WebSocket-Protocol: " & protocols.join(", ") & "\c\L")
   for h in additionalHeaders:
     msg.add(h[0] & ": " & h[1] & "\c\L")
+  msg.add("\c\L")
 
   await s.send(msg)
 
