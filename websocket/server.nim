@@ -31,6 +31,8 @@
 ##
 ##       req.client.close()
 ##       echo ".. socket went away."
+##
+##   waitfor server.serve(Port(8080), cb)
 
 import asyncnet, asyncdispatch, asynchttpserver, strtabs, base64, securehash,
   strutils, sequtils
