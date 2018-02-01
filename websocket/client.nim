@@ -50,9 +50,12 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
   ## one the server offers (if any).
   ## The negotiated protocol is in `AsyncWebSocket.protocol`.
 
-  let key = encode($(getTime().int))
+  let
+    keyDec = align($(getTime().int), 16, '#')
+    key = encode(keyDec)
+    s = newAsyncSocket()
+  assert keyDec.len == 16
 
-  let s = newAsyncSocket()
   if ssl:
     when not defined(ssl):
       raise newException(Exception, "Cannot connect over SSL without -d:ssl")
