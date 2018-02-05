@@ -96,7 +96,6 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     if ln == "\r\L": break
     let sp = ln.split(": ")
     if sp.len < 2: continue
-    echo sp
     if sp[0].toLower == "sec-websocket-protocol":
       if protocols.len > 0 and protocols.find(sp[1]) == -1:
         raise newException(ProtocolError, "server does not support any of our protocols")
