@@ -128,7 +128,7 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
     finalLen = cast[ptr int32](lenstr[4].addr)[].htonl
 
   else:
-    finalLen = hdrLen
+    finalLen = hdrLen.int
 
   f.masked = (b1 and 0x80) == 0x80
   var maskingKey = ""
