@@ -74,7 +74,7 @@ proc makeFrame*(f: Frame): string =
 
   if f.masked:
     # TODO: proper rng
-    
+
     # for compatibility with renaming of random
     template rnd(x: untyped): untyped =
       when compiles(rand(x)):
@@ -231,7 +231,7 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
       # optional 2 byte unsigned integer for close code
       # optional string for close reason
       if resultData.len >= 2:
-        ex.msg &= ", close code: " & $cast[uint16](resultData.cstring).htons.int
+        ex.msg &= ", close code: " & $cast[ptr uint16](resultData[0].addr)[].htons.int
         if resultData.len > 2:
           ex.msg &= ", reason: " & resultData[2..^1]
 
