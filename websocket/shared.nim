@@ -28,13 +28,6 @@ type
 
     data: string ## App data
 
-# for compatibility with renaming of random
-template rnd(x: untyped): untyped =
-  when compiles(rand(x)):
-    rand(x)
-  else:
-    random(x)
-
 proc htonll(x: uint64): uint64 =
   ## Converts 64-bit unsigned integers from host to network byte order.
   ## On machines where the host byte order is the same as network byte order,
@@ -81,6 +74,14 @@ proc makeFrame*(f: Frame): string =
 
   if f.masked:
     # TODO: proper rng
+    
+    # for compatibility with renaming of random
+    template rnd(x: untyped): untyped =
+      when compiles(rand(x)):
+        rand(x)
+      else:
+        random(x)
+
     randomize()
     let maskingKey = [ rnd(256).char, rnd(256).char,
       rnd(256).char, rnd(256).char ]
