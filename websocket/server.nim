@@ -83,11 +83,14 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
     result = (false, "no protocol advertised, but server demands `" & protocol & "`")
     return
 
-  if cliwantsProt and protocol != "":
-    let wants = req.headers["sec-websocket-protocol"].split(",").
-      mapIt(it.strip.tolower)
+  block protocolSupportCheck:
+    if cliwantsProt and protocol != "":
+      let prot = protocol.toLowerAscii()
 
-    if wants.find(protocol.tolower) == -1:
+      for it in req.headers["sec-websocket-protocol"].split(", "):
+        if prot == it.strip.toLowerAscii():
+          break protocolSupportCheck
+      
       result = (false, "no advertised protocol supported; server speaks `" & $protocol & "`" )
       return
 

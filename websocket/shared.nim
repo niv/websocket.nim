@@ -28,6 +28,20 @@ type
 
     data: string ## App data
 
+proc htonll(x: uint64): uint64 =
+  ## Converts 64-bit unsigned integers from host to network byte order.
+  ## On machines where the host byte order is the same as network byte order,
+  ## this is a no-op; otherwise, it performs a 8-byte swap operation.
+  when cpuEndian == bigEndian: result = x
+  else: result = (x shr 56'u64) or
+                 (x shr 40'u64 and 0xff00'u64) or
+                 (x shr 24'u64 and 0xff0000'u64) or
+                 (x shr 8'u64 and 0xff000000'u64) or
+                 (x shl 8'u64 and 0xff00000000'u64) or
+                 (x shr 24'u64 and 0xff0000000000'u64) or
+                 (x shl 40'u64 and 0xff000000000000'u64) or
+                 (x shl 56'u64)
+
 proc makeFrame*(f: Frame): string =
   ## Generate valid websocket frame data, ready to be sent over the wire.
   ## This is useful for rolling your own impl, for example
@@ -52,17 +66,25 @@ proc makeFrame*(f: Frame): string =
   ret.write(byte b1)
 
   if f.data.len > 125 and f.data.len <= 0x7fff:
-    ret.write(int16 f.data.len.int16.htons)
+    ret.write(f.data.len.uint16.htons)
   elif f.data.len > 0x7fff:
-    ret.write(int64 f.data.len.int32.htonl)
+    ret.write(f.data.len.uint64.htonll)
 
   var data = f.data
 
   if f.masked:
     # TODO: proper rng
+
+    # for compatibility with renaming of random
+    template rnd(x: untyped): untyped =
+      when compiles(rand(x)):
+        rand(x)
+      else:
+        random(x)
+
     randomize()
-    let maskingKey = [ random(256).char, random(256).char,
-      random(256).char, random(256).char ]
+    let maskingKey = [ rnd(256).char, rnd(256).char,
+      rnd(256).char, rnd(256).char ]
 
     for i in 0..<data.len: data[i] = (data[i].uint8 xor maskingKey[i mod 4].uint8).char
 
@@ -118,14 +140,14 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
     var lenstr = await(ws.recv(2, {}))
     if lenstr.len != 2: raise newException(IOError, "socket closed")
 
-    finalLen = cast[ptr int16](lenstr[0].addr)[].htons
+    finalLen = cast[ptr uint16](lenstr[0].addr)[].htons.int
 
   elif hdrLen == 0x7f:
     var lenstr = await(ws.recv(8, {}))
     if lenstr.len != 8: raise newException(IOError, "socket closed")
     # we just assume it's a 32bit int, since no websocket will EVER
     # send more than 2GB of data in a single packet. Right? Right?
-    finalLen = cast[ptr int32](lenstr[4].addr)[].htonl
+    finalLen = cast[ptr uint32](lenstr[4].addr)[].htonl.int
 
   else:
     finalLen = hdrLen.int
@@ -206,8 +228,10 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
     if resultOpcode == Opcode.Close:
       let ex = newException(IOError, "socket closed by remote peer")
 
+      # optional 2 byte unsigned integer for close code
+      # optional string for close reason
       if resultData.len >= 2:
-        ex.msg &= ", close code: " & $cast[uint16](resultData.cstring).int
+        ex.msg &= ", close code: " & $cast[ptr uint16](resultData[0].addr)[].htons.int
         if resultData.len > 2:
           ex.msg &= ", reason: " & resultData[2..^1]
 
