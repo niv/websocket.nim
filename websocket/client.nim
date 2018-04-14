@@ -43,7 +43,7 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = newContext(protTLSv1)
+    ctx: SslContext = when defined(ssl): newContext(protTLSv1) else: nil
    ): Future[AsyncWebSocket] {.async.} =
   ## Create a new websocket and connect immediately.
   ## Optionally give a list of protocols to negotiate; keep empty to accept the
@@ -116,7 +116,7 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
 proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = newContext(protTLSv1)
+    ctx: SslContext = when defined(ssl): newContext(protTLSv1) else: nil
    ): Future[AsyncWebSocket] {.async.} =
   var ssl: bool
   if uri.scheme == "ws":
@@ -133,7 +133,7 @@ proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[]
 proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = newContext(protTLSv1)
+    ctx: SslContext = when defined(ssl): newContext(protTLSv1) else: nil
    ): Future[AsyncWebSocket] {.async.} =
   let uriBuf = parseUri(uri)
   result = await newAsyncWebsocket(uriBuf, additionalHeaders, protocols, userAgent, ctx)
