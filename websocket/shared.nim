@@ -182,16 +182,6 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
     resultData &= f.data
 
     case f.opcode
-      of Opcode.Close:
-        # handle case: ping never arrives and client closes the connection
-        let ex = newException(IOError, "socket closed by remote peer")
-
-        if reqPing.hasKey(ws.getFD().AsyncFD.int):
-          reqPing[ws.getFD().AsyncFD.int].fail(ex)
-          reqPing.del(ws.getFD().AsyncFD.int)
-
-        raise ex
-
       of Opcode.Ping:
         await ws.send(makeFrame(Opcode.Pong, f.data, isClientSocket))
 
@@ -204,7 +194,7 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
       of Opcode.Cont:
         if not f.fin: continue
 
-      of Opcode.Text, Opcode.Binary:
+      of Opcode.Text, Opcode.Binary, Opcode.Close:
         resultOpcode = f.opcode
         # read another!
         if not f.fin: continue
@@ -212,6 +202,21 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
       else:
         ws.close()
         raise newException(ProtocolError, "received invalid opcode: " & $f.opcode)
+
+    if resultOpcode == Opcode.Close:
+      let ex = newException(IOError, "socket closed by remote peer")
+
+      if resultData.len >= 2:
+        ex.msg &= ", close code: " & $cast[uint16](resultData.cstring).int
+        if resultData.len > 2:
+          ex.msg &= ", reason: " & resultData[2..^1]
+
+      # handle case: ping never arrives and client closes the connection
+      if reqPing.hasKey(ws.getFD().AsyncFD.int):
+        reqPing[ws.getFD().AsyncFD.int].fail(ex)
+        reqPing.del(ws.getFD().AsyncFD.int)
+
+      raise ex
 
     return (resultOpcode, resultData)
 
