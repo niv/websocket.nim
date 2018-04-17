@@ -1,5 +1,5 @@
 import asyncdispatch, asyncnet, streams, nativesockets, strutils, tables,
-  times, oids, random
+  times, oids, random, options
 
 type
   ProtocolError* = object of Exception
@@ -179,8 +179,7 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
 # key is the socket fd
 type PingRequest = Future[void] # tuple[data: string, fut: Future[void]]
 
-var pingTableInited {.threadvar.} : bool
-var reqPing {.threadvar.}: Table[int, PingRequest]
+var reqPing {.threadvar.}: Option[Table[int, PingRequest]]
 
 proc readData*(ws: AsyncSocket, isClientSocket: bool):
     Future[tuple[opcode: Opcode, data: string]] {.async.} =
@@ -203,9 +202,10 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
   var resultData = ""
   var resultOpcode: Opcode
 
-  if not pingTableInited:
-    reqPing = initTable[int, PingRequest]()
-    pingTableInited = true
+  if reqPing.isNone:
+    reqPing = some(initTable[int, PingRequest]())
+
+  var pingTable = reqPing.unsafeGet()
 
   while true:
     let f = await ws.recvFrame()
@@ -217,8 +217,8 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
         await ws.send(makeFrame(Opcode.Pong, f.data, isClientSocket))
 
       of Opcode.Pong:
-        if reqPing.hasKey(ws.getFD().AsyncFD.int):
-          reqPing[ws.getFD().AsyncFD.int].complete()
+        if pingTable.hasKey(ws.getFD().AsyncFD.int):
+          pingTable[ws.getFD().AsyncFD.int].complete()
 
         else: discard  # thanks, i guess?
 
@@ -245,9 +245,9 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
           ex.msg &= ", reason: " & resultData[2..^1]
 
       # handle case: ping never arrives and client closes the connection
-      if reqPing.hasKey(ws.getFD().AsyncFD.int):
-        reqPing[ws.getFD().AsyncFD.int].fail(ex)
-        reqPing.del(ws.getFD().AsyncFD.int)
+      if pingTable.hasKey(ws.getFD().AsyncFD.int):
+        pingTable[ws.getFD().AsyncFD.int].fail(ex)
+        pingTable.del(ws.getFD().AsyncFD.int)
 
       raise ex
 
