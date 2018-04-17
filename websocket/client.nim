@@ -144,21 +144,21 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = defaultSslContext
-   ): Future[AsyncWebSocket] {.deprecated: "Use newAsyncWebsocketClient instead".} =
+   ): Future[AsyncWebSocket] {.deprecated.} =
   result = newAsyncWebsocketClient(host, port, path, ssl, additionalHeaders, protocols, userAgent, ctx)
 
 proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = defaultSslContext
-   ): Future[AsyncWebSocket] {.deprecated: "Use newAsyncWebsocketClient instead".} =
+   ): Future[AsyncWebSocket] {.deprecated.} =
   result = newAsyncWebsocketClient(uri, additionalHeaders, protocols, userAgent, ctx)
 
 proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = defaultSslContext
-   ): Future[AsyncWebSocket] {.deprecated: "Use newAsyncWebsocketClient instead".} =
+   ): Future[AsyncWebSocket] {.deprecated.} =
   result = newAsyncWebsocketClient(uri, additionalHeaders, protocols, userAgent, ctx)
 
 # proc sendFrameData(ws: AsyncWebSocket, data: string): Future[void] {.async.} =

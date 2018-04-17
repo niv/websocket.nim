@@ -307,10 +307,10 @@ proc sendPing*(ws: AsyncWebSocket, masked: bool, token: string = ""): Future[voi
   ## Will generate a suitable token if you do not provide one.
   result = sendPing(ws.sock, masked, token)
 
-proc close*(ws: AsyncSocket, code = 0, reason = ""): Future[void] {.async.} =
+proc closeWebsocket*(ws: AsyncSocket, code = 0, reason = ""): Future[void] {.async.} =
   ## Closes the socket.
 
-  defer: await ws.close()
+  defer: ws.close()
 
   var data = ""
 
@@ -326,4 +326,4 @@ proc close*(ws: AsyncSocket, code = 0, reason = ""): Future[void] {.async.} =
 
 proc close*(ws: AsyncWebSocket, code = 0, reason = ""): Future[void] =
   ## Closes the socket.
-  result = ws.sock.close(code, reason)
+  result = ws.sock.closeWebsocket(code, reason)
