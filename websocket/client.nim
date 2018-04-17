@@ -34,9 +34,9 @@ const WebsocketUserAgent* = "websocket.nim (https://github.com/niv/websocket.nim
 
 when not defined(ssl):
   type SslContext = ref object
-  const defaultSslContext: SslContext = nil
+  var defaultSslContext: SslContext = nil
 else:
-  const defaultSslContext: SslContext = newContext(protTLSv1, verifyMode = CVerifyNone)
+  var defaultSslContext: SslContext = newContext(protTLSv1, verifyMode = CVerifyNone)
 
 proc newAsyncWebsocketClient*(host: string, port: Port, path: string, ssl = false,
     additionalHeaders: seq[(string, string)] = @[],
