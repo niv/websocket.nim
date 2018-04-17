@@ -5,7 +5,6 @@ type
   ProtocolError* = object of Exception
 
   Opcode* {.pure.} = enum
-    ##
     Cont = 0x0 ## Continued Frame (when the previous was fin = 0)
     Text = 0x1 ## Text frames need to be valid UTF-8
     Binary = 0x2 ## Binary frames can be anything.
@@ -27,6 +26,16 @@ type
     opcode: Opcode ## The opcode of this frame.
 
     data: string ## App data
+  
+  SocketKind* {.pure.} = enum
+    Client, Server
+  
+  AsyncWebSocketObj = object of RootObj
+    sock*: AsyncSocket
+    protocol*: string
+    kind*: SocketKind
+
+  AsyncWebSocket* = ref AsyncWebSocketObj
 
 proc htonll(x: uint64): uint64 =
   ## Converts 64-bit unsigned integers from host to network byte order.
@@ -270,3 +279,36 @@ proc sendPing*(ws: AsyncSocket, masked: bool, token: string = ""): Future[void] 
   # await fut
   # reqPing.del(ws.getFD().AsyncFD.int)
   # result = ((epochTime() - start).float64 * 1000).int
+
+proc readData*(ws: AsyncWebSocket): Future[tuple[opcode: Opcode, data: string]] =
+  ## Reads reassembled data off the websocket and give you joined frame data.
+  ##
+  ## Note: You will still see control frames, but they are all handled for you
+  ## (Ping/Pong, Cont, Close, and so on).
+  ##
+  ## The only ones you need to care about are Opcode.Text and Opcode.Binary, the
+  ## so-called application frames.
+  ##
+  ## Will raise IOError when the socket disconnects and ProtocolError on any
+  ## websocket-related issues.
+
+  result = readData(ws.sock, ws.kind == SocketKind.Client)
+
+proc sendText*(ws: AsyncWebSocket, p: string, masked: bool): Future[void] =
+  ## Sends text data. Will only return after all data has been sent out.
+  result = sendText(ws.sock, p, masked)
+
+proc sendBinary*(ws: AsyncWebSocket, p: string, masked: bool): Future[void] =
+  ## Sends binary data. Will only return after all data has been sent out.
+  result = sendBinary(ws.sock, p, masked)
+
+proc sendPing*(ws: AsyncWebSocket, masked: bool, token: string = ""): Future[void] =
+  ## Sends a WS ping message.
+  ## Will generate a suitable token if you do not provide one.
+  result = sendPing(ws.sock, masked, token)
+
+proc close*(ws: AsyncWebSocket): Future[void] {.async.} =
+  ## Closes the socket.
+
+  defer: ws.sock.close()
+  await ws.sock.send(makeFrame(Opcode.Close, "", true))

@@ -4,20 +4,20 @@
 ## .. code-block::nim
 ##   import websocket, asyncnet, asyncdispatch
 ##
-##   let ws = waitFor newAsyncWebsocket("echo.websocket.org",
+##   let ws = waitFor newAsyncWebsocketClient("echo.websocket.org",
 ##     Port 80, "/?encoding=text", ssl = false)
 ##   echo "connected!"
 ##
 ##   proc reader() {.async.} =
 ##     while true:
-##       let read = await ws.sock.readData(true)
-##       echo "read: " & $read
+##       let read = await ws.readData()
+##       echo "read: ", read
 ##
 ##   proc ping() {.async.} =
 ##     while true:
 ##       await sleepAsync(6000)
 ##       echo "ping"
-##       await ws.sock.sendPing(true)
+##       await ws.sendPing()
 ##
 ##   asyncCheck reader()
 ##   asyncCheck ping()
@@ -32,18 +32,17 @@ import private/hex
 
 const WebsocketUserAgent* = "websocket.nim (https://github.com/niv/websocket.nim)"
 
-type
-  AsyncWebSocketObj = object of RootObj
-    sock*: AsyncSocket
-    protocol*: string
+when not defined(ssl):
+  type SslContext = ref object
+  const defaultSslContext: SslContext = nil
+else:
+  const defaultSslContext: SslContext = newContext(protTLSv1, verifyMode = CVerifyNone)
 
-  AsyncWebSocket* = ref AsyncWebSocketObj
-
-proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
+proc newAsyncWebsocketClient*(host: string, port: Port, path: string, ssl = false,
     additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = newContext(protTLSv1)
+    ctx: SslContext = defaultSslContext
    ): Future[AsyncWebSocket] {.async.} =
   ## Create a new websocket and connect immediately.
   ## Optionally give a list of protocols to negotiate; keep empty to accept the
@@ -88,6 +87,7 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
       "server did not reply with a websocket upgrade: " & hdr)
 
   let ws = new AsyncWebSocket
+  ws.kind = SocketKind.Client
   ws.sock = s
 
   while true:
@@ -113,39 +113,31 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
 
   result = ws
 
-proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[],
+proc newAsyncWebsocketClient*(uri: Uri, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = newContext(protTLSv1)
+    ctx: SslContext = defaultSslContext
    ): Future[AsyncWebSocket] {.async.} =
   var ssl: bool
-  if uri.scheme == "ws":
+  case uri.scheme
+  of "ws":
     ssl = false
-  elif uri.scheme == "wss":
+  of "wss":
     ssl = true
   else:
     raise newException(ProtocolError, "uri scheme has to be 'ws' for plaintext or 'wss' for websocket over ssl.")
 
   let port = Port(uri.port.parseInt())
-  result = await newAsyncWebsocket(uri.hostname, port, uri.path, ssl,
+  result = await newAsyncWebsocketClient(uri.hostname, port, uri.path, ssl,
     additionalHeaders, protocols, userAgent, ctx)
 
-proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[],
+proc newAsyncWebsocketClient*(uri: string, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = newContext(protTLSv1)
+    ctx: SslContext = defaultSslContext
    ): Future[AsyncWebSocket] {.async.} =
   let uriBuf = parseUri(uri)
-  result = await newAsyncWebsocket(uriBuf, additionalHeaders, protocols, userAgent, ctx)
+  result = await newAsyncWebsocketClient(uriBuf, additionalHeaders, protocols, userAgent, ctx)
 
 # proc sendFrameData(ws: AsyncWebSocket, data: string): Future[void] {.async.} =
 #   await ws.sock.send(data)
-
-proc close*(ws: AsyncWebSocket): Future[void] {.async.} =
-  ## Closes the socket.
-
-  defer: ws.sock.close()
-  await ws.sock.send(makeFrame(Opcode.Close, "", true))
-
-# proc readData(ws: AsyncWebSocket): auto {.async.} =
-#   ## This is an alias for
