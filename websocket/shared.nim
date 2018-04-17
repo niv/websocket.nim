@@ -307,8 +307,19 @@ proc sendPing*(ws: AsyncWebSocket, masked: bool, token: string = ""): Future[voi
   ## Will generate a suitable token if you do not provide one.
   result = sendPing(ws.sock, masked, token)
 
-proc close*(ws: AsyncWebSocket): Future[void] {.async.} =
+proc close*(ws: AsyncWebSocket, code = 0, reason = ""): Future[void] {.async.} =
   ## Closes the socket.
 
   defer: ws.sock.close()
-  await ws.sock.send(makeFrame(Opcode.Close, "", true))
+
+  var data = ""
+
+  if code != 0:
+    var codeStr = $cast[cstring](code.uint16)
+    codeStr.setLen(2)
+    data.add(codeStr)
+
+  if reason != "":
+    data.add(reason)
+
+  await ws.sock.send(makeFrame(Opcode.Close, data, true))
