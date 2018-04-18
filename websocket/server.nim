@@ -61,9 +61,8 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   ## After successful negotiation, you can immediately start sending/reading
   ## websocket frames.
 
-  if req.headers.hasKey("sec-websocket-extensions"):
+  # if req.headers.hasKey("sec-websocket-extensions"):
     # TODO: transparently support extensions
-    discard
 
   if req.headers.getOrDefault("sec-websocket-version") != "13":
     result.error = "the only supported sec-websocket-version is 13"
@@ -73,26 +72,25 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
     result.error = "no sec-websocket-key provided"
     return
 
-  let cliWantsProt = req.headers.hasKey("sec-websocket-protocol")
+  let isProtocolEmpty = protocol == ""
 
-  if cliWantsProt and protocol == "":
-    result.error = "server does not support protocol negotiation"
-    return
+  if req.headers.hasKey("sec-websocket-protocol"):
+    if isProtocolEmpty:
+      result.error = "server does not support protocol negotation"
+      return
 
-  if not cliwantsProt and protocol != "":
-    result.error = "no protocol advertised, but server demands `" & protocol & "`"
-    return
-
-  block protocolSupportCheck:
-    if cliwantsProt and protocol != "":
+    block protocolCheck:
       let prot = protocol.toLowerAscii()
 
       for it in req.headers["sec-websocket-protocol"].split(", "):
         if prot == it.strip.toLowerAscii():
-          break protocolSupportCheck
+          break protocolCheck
       
       result.error = "no advertised protocol supported; server speaks `" & protocol & "`" 
       return
+  elif not isProtocolEmpty:
+    result.error = "no protocol advertised, but server demands `" & protocol & "`"
+    return
 
   let sh = secureHash(req.headers["sec-websocket-key"] &
     "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
@@ -101,7 +99,7 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   msg.add("Sec-Websocket-Accept: " & acceptKey & "\c\L")
   msg.add("Connection: Upgrade\c\L")
   msg.add("Upgrade: websocket\c\L")
-  if protocol != "": msg.add("Sec-Websocket-Protocol: " & protocol & "\c\L")
+  if not isProtocolEmpty: msg.add("Sec-Websocket-Protocol: " & protocol & "\c\L")
   msg.add "\c\L"
   await req.client.send(msg)
 

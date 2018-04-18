@@ -87,7 +87,7 @@ proc makeFrame*(f: Frame): string =
     # for compatibility with renaming of random
     template rnd(x: untyped): untyped =
       when compiles(rand(x)):
-        rand(x)
+        rand(x-1)
       else:
         random(x)
 
@@ -312,17 +312,15 @@ proc closeWebsocket*(ws: AsyncSocket, code = 0, reason = ""): Future[void] {.asy
 
   defer: ws.close()
 
-  var data = ""
+  var data = newStringStream()
 
   if code != 0:
-    var codeStr = $cast[cstring](code.uint16)
-    codeStr.setLen(2)
-    data.add(codeStr)
+    data.write(code.uint16)
 
   if reason != "":
-    data.add(reason)
+    data.write(reason)
 
-  await ws.send(makeFrame(Opcode.Close, data, true))
+  await ws.send(makeFrame(Opcode.Close, data.readAll(), true))
 
 proc close*(ws: AsyncWebSocket, code = 0, reason = ""): Future[void] =
   ## Closes the socket.

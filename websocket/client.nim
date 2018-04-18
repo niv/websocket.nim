@@ -122,7 +122,9 @@ proc newAsyncWebsocketClient*(uri: Uri, additionalHeaders: seq[(string, string)]
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = defaultSslContext
    ): Future[AsyncWebSocket] {.async.} =
+
   var ssl: bool
+
   case uri.scheme
   of "ws":
     ssl = false
