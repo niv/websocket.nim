@@ -50,7 +50,7 @@ proc newAsyncWebsocketClient*(host: string, port: Port, path: string, ssl = fals
   ## The negotiated protocol is in `AsyncWebSocket.protocol`.
 
   let
-    keyDec = align($(getTime().int64), 16, '#')
+    keyDec = align($(getTime().toUnix), 16, '#')
     key = encode(keyDec)
     s = newAsyncSocket()
 
