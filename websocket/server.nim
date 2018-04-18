@@ -106,5 +106,6 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   let ws = new AsyncWebSocket
   ws.kind = SocketKind.Server
   ws.sock = req.client
+  ws.protocol = protocol
 
   result = (ws, "")
