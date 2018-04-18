@@ -254,15 +254,15 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
     return (resultOpcode, resultData)
 
 
-proc sendText*(ws: AsyncSocket, p: string, masked: bool): Future[void] {.async.} =
+proc sendText*(ws: AsyncSocket, p: string, masked: bool = false): Future[void] {.async.} =
   ## Sends text data. Will only return after all data has been sent out.
   await ws.send(makeFrame(Opcode.Text, p, masked))
 
-proc sendBinary*(ws: AsyncSocket, p: string, masked: bool): Future[void] {.async.} =
+proc sendBinary*(ws: AsyncSocket, p: string, masked: bool = false): Future[void] {.async.} =
   ## Sends binary data. Will only return after all data has been sent out.
   await ws.send(makeFrame(Opcode.Binary, p, masked))
 
-proc sendPing*(ws: AsyncSocket, masked: bool, token: string = ""): Future[void] {.async.} =
+proc sendPing*(ws: AsyncSocket, masked: bool = false, token: string = ""): Future[void] {.async.} =
   ## Sends a WS ping message.
   ## Will generate a suitable token if you do not provide one.
 
@@ -294,11 +294,11 @@ proc readData*(ws: AsyncWebSocket): Future[tuple[opcode: Opcode, data: string]] 
 
   result = readData(ws.sock, ws.kind == SocketKind.Client)
 
-proc sendText*(ws: AsyncWebSocket, p: string, masked: bool): Future[void] =
+proc sendText*(ws: AsyncWebSocket, p: string, masked: bool = false): Future[void] =
   ## Sends text data. Will only return after all data has been sent out.
   result = sendText(ws.sock, p, masked)
 
-proc sendBinary*(ws: AsyncWebSocket, p: string, masked: bool): Future[void] =
+proc sendBinary*(ws: AsyncWebSocket, p: string, masked: bool = false): Future[void] =
   ## Sends binary data. Will only return after all data has been sent out.
   result = sendBinary(ws.sock, p, masked)
 

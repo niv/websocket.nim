@@ -60,24 +60,25 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   ##
   ## After successful negotiation, you can immediately start sending/reading
   ## websocket frames.
+  
+  template reterr(err: string): untyped =
+    result.error = err
+    return
 
   # if req.headers.hasKey("sec-websocket-extensions"):
     # TODO: transparently support extensions
 
   if req.headers.getOrDefault("sec-websocket-version") != "13":
-    result.error = "the only supported sec-websocket-version is 13"
-    return
+    reterr "the only supported sec-websocket-version is 13"
 
   if not req.headers.hasKey("sec-websocket-key"):
-    result.error = "no sec-websocket-key provided"
-    return
+    reterr "no sec-websocket-key provided"
 
   let isProtocolEmpty = protocol == ""
 
   if req.headers.hasKey("sec-websocket-protocol"):
     if isProtocolEmpty:
-      result.error = "server does not support protocol negotation"
-      return
+      reterr "server does not support protocol negotation"
 
     block protocolCheck:
       let prot = protocol.toLowerAscii()
@@ -86,11 +87,9 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
         if prot == it.strip.toLowerAscii():
           break protocolCheck
       
-      result.error = "no advertised protocol supported; server speaks `" & protocol & "`" 
-      return
+      reterr "no advertised protocol supported; server speaks `" & protocol & "`" 
   elif not isProtocolEmpty:
-    result.error = "no protocol advertised, but server demands `" & protocol & "`"
-    return
+    reterr "no protocol advertised, but server demands `" & protocol & "`"
 
   let sh = secureHash(req.headers["sec-websocket-key"] &
     "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
@@ -103,9 +102,9 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   msg.add "\c\L"
   await req.client.send(msg)
 
-  let ws = new AsyncWebSocket
-  ws.kind = SocketKind.Server
-  ws.sock = req.client
-  ws.protocol = protocol
+  new(result.ws)
+  result.ws.kind = SocketKind.Server
+  result.ws.sock = req.client
+  result.ws.protocol = protocol
 
-  result = (ws, "")
+  result.error = ""
