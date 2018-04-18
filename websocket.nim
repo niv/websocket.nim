@@ -1,5 +1,3 @@
-import websocket/shared
-import websocket/client
-import websocket/server
+import websocket/[shared, client, server]
 
-export client, shared, server
+export shared, client, server
