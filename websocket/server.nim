@@ -4,10 +4,11 @@
 ## .. code-block::nim
 ##   import websocket, asynchttpserver, asyncnet, asyncdispatch
 ##
-##   var server = newAsyncHttpServer()
+##   let server = newAsyncHttpServer()
 ##   proc cb(req: Request) {.async.} =
 ##
-##     let (ws, error) = await(verifyWebsocketRequest(req, "myfancyprotocol"))
+##     let (ws, error) = await verifyWebsocketRequest(req, "myfancyprotocol")
+##
 ##     if ws.isNil:
 ##       echo "WS negotiation failed: ", error
 ##       await req.respond(Http400, "Websocket negotiation failed: " & error)
@@ -15,24 +16,22 @@
 ##
 ##     else:
 ##       echo "New websocket customer arrived!"
-##       while true:
+##       waitFor ws.read(proc (opcode: Opcode, data: string): bool {.async.} =
 ##         try:
-##           var f = await ws.readData()
-##           echo "(opcode: ", f.opcode, ", data: ", f.data.len, ")"
+##           echo "(opcode: ", opcode, ", data: ", data.len, ")"
 ##
-##           if f.opcode == Opcode.Text:
-##             waitFor ws.sendText("thanks for the data!", masked = false)
+##           if opcode == Opcode.Text:
+##             waitFor ws.sendText("thanks for the data!")
 ##           else:
-##             waitFor ws.sendBinary(f.data, masked = false)
-##
+##             waitFor ws.sendBinary(data)
 ##         except:
 ##           echo getCurrentExceptionMsg()
-##           break
+##           result = true)
 ##
-##       ws.close()
+##       asyncCheck ws.close()
 ##       echo ".. socket went away."
 ##
-##   waitfor server.serve(Port(8080), cb)
+##   waitFor server.serve(Port(8080), cb)
 
 import asyncnet, asyncdispatch, asynchttpserver, strtabs, base64, securehash,
   strutils, sequtils
@@ -61,7 +60,7 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   ## After successful negotiation, you can immediately start sending/reading
   ## websocket frames.
   
-  template reterr(err: string): untyped =
+  template reterr(err: string) =
     result.error = err
     return
 

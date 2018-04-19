@@ -8,10 +8,8 @@
 ##     Port 80, "/?encoding=text", ssl = false)
 ##   echo "connected!"
 ##
-##   proc reader() {.async.} =
-##     while true:
-##       let read = await ws.readData()
-##       echo "read: ", read
+##   proc reader(opcode: Opcode, data: string) {.async.} =
+##     echo "(opcode: ", opcode, ", data: ", data, ")"
 ##
 ##   proc ping() {.async.} =
 ##     while true:
@@ -19,7 +17,7 @@
 ##       echo "ping"
 ##       await ws.sendPing()
 ##
-##   asyncCheck reader()
+##   asyncCheck ws.read(reader)
 ##   asyncCheck ping()
 ##   runForever()
 

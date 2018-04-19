@@ -302,7 +302,7 @@ proc sendBinary*(ws: AsyncWebSocket, p: string, masked: bool = false): Future[vo
   ## Sends binary data. Will only return after all data has been sent out.
   result = sendBinary(ws.sock, p, masked)
 
-proc sendPing*(ws: AsyncWebSocket, masked: bool, token: string = ""): Future[void] =
+proc sendPing*(ws: AsyncWebSocket, masked: bool = false, token: string = ""): Future[void] =
   ## Sends a WS ping message.
   ## Will generate a suitable token if you do not provide one.
   result = sendPing(ws.sock, masked, token)
