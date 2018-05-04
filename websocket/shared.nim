@@ -59,25 +59,29 @@ proc makeFrame*(f: Frame): string =
   var ret = newStringStream()
 
   var b0: byte = (f.opcode.byte and 0x0f)
-  b0 = b0 or (1 shl 7) # fin
+  if f.fin: b0 = b0 or (1 shl 7)
+  if f.rsv1: b0 = b0 or (1 shl 6)
+  if f.rsv2: b0 = b0 or (1 shl 5)
+  if f.rsv3: b0 = b0 or (1 shl 4)
 
-  ret.write(byte b0)
+  ret.write(b0)
 
   var b1: byte = 0
 
-  if f.data.len <= 125: b1 = f.data.len.uint8
-  elif f.data.len > 125 and f.data.len <= 0x7fff: b1 = 126u8
+  let length = f.data.len
+  if length <= 125: b1 = length.uint8
+  elif length > 125 and length <= 0x7fff: b1 = 126u8
   else: b1 = 127u8
 
   let b1unmasked = b1
   if f.masked: b1 = b1 or (1 shl 7)
 
-  ret.write(byte b1)
+  ret.write(b1)
 
-  if f.data.len > 125 and f.data.len <= 0x7fff:
-    ret.write(f.data.len.uint16.htons)
-  elif f.data.len > 0x7fff:
-    ret.write(f.data.len.uint64.htonll)
+  if b1unmasked == 126u8:
+    ret.write(length.uint16.htons)
+  elif b1unmasked == 127u8:
+    ret.write(length.uint64.htonll)
 
   var data = f.data
 
@@ -86,7 +90,7 @@ proc makeFrame*(f: Frame): string =
 
     # for compatibility with renaming of random
     template rnd(x: untyped): untyped =
-      when compiles(rand(x)):
+      when declared(random.rand):
         rand(x-1)
       else:
         random(x)
@@ -95,7 +99,7 @@ proc makeFrame*(f: Frame): string =
     let maskingKey = [ rnd(256).char, rnd(256).char,
       rnd(256).char, rnd(256).char ]
 
-    for i in 0..<data.len: data[i] = (data[i].uint8 xor maskingKey[i mod 4].uint8).char
+    for i in 0..<length: data[i] = (data[i].uint8 xor maskingKey[i mod 4].uint8).char
 
     ret.write(maskingKey)
 
@@ -107,7 +111,7 @@ proc makeFrame*(f: Frame): string =
     2 +
     (if f.masked: 4 else: 0) +
     (if b1unmasked == 126u8: 2 elif b1unmasked == 127u8: 8 else: 0) +
-    data.len
+    length
   ))
 
 proc makeFrame*(opcode: Opcode, data: string, masked: bool): string =
@@ -126,7 +130,7 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
     (b and lookupTable[idx]) != 0
 
   var f: Frame
-  let hdr = await(ws.recv(2))
+  let hdr = await ws.recv(2)
   if hdr.len != 2: raise newException(IOError, "socket closed")
 
   let b0 = hdr[0].uint8
@@ -142,36 +146,36 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
     raise newException(ProtocolError,
       "websocket tried to use non-negotiated extension")
 
-  var finalLen: int = 0
-
   let hdrLen = int(b1 and 0x7f)
-  if hdrLen == 0x7e:
-    var lenstr = await(ws.recv(2, {}))
-    if lenstr.len != 2: raise newException(IOError, "socket closed")
+  let finalLen = case hdrLen:
+    of 0x7e:
+      var lenstr = await ws.recv(2, {})
+      if lenstr.len != 2: raise newException(IOError, "socket closed")
 
-    finalLen = cast[ptr uint16](lenstr[0].addr)[].htons.int
+      cast[ptr uint16](lenstr[0].addr)[].htons.int
+    of 0x7f:
+      var lenstr = await ws.recv(8, {})
+      if lenstr.len != 8: raise newException(IOError, "socket closed")
 
-  elif hdrLen == 0x7f:
-    var lenstr = await(ws.recv(8, {}))
-    if lenstr.len != 8: raise newException(IOError, "socket closed")
-    # we just assume it's a 32bit int, since no websocket will EVER
-    # send more than 2GB of data in a single packet. Right? Right?
-    finalLen = cast[ptr uint32](lenstr[4].addr)[].htonl.int
+      let realLen = cast[ptr uint64](lenstr[0].addr)[].htonll
+      if realLen > high(int).uint64:
+        raise newException(IOError, "websocket payload too large")
 
-  else:
-    finalLen = hdrLen.int
+      realLen.int
+    else: hdrLen
 
   f.masked = (b1 and 0x80) == 0x80
   var maskingKey = ""
   if f.masked:
-    maskingKey = await(ws.recv(4, {}))
+    maskingKey = await ws.recv(4, {})
     # maskingKey = cast[ptr uint32](lenstr[0].addr)[]
 
-  f.data = await(ws.recv(finalLen, {}))
+  f.data = await ws.recv(finalLen, {})
   if f.data.len != finalLen: raise newException(IOError, "socket closed")
 
   if f.masked:
-    for i in 0..<f.data.len: f.data[i] = (f.data[i].uint8 xor maskingKey[i mod 4].uint8).char
+    for i in 0..<f.data.len:
+      f.data[i] = (f.data[i].uint8 xor maskingKey[i mod 4].uint8).char
 
   result = f
 
@@ -240,9 +244,9 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
       # optional 2 byte unsigned integer for close code
       # optional string for close reason
       if resultData.len >= 2:
-        ex.msg &= ", close code: " & $cast[ptr uint16](resultData[0].addr)[].htons.int
+        ex.msg.add(", close code: " & $cast[ptr uint16](resultData[0].addr)[].htons.int)
         if resultData.len > 2:
-          ex.msg &= ", reason: " & resultData[2..^1]
+          ex.msg.add(", reason: " & resultData[2..^1])
 
       # handle case: ping never arrives and client closes the connection
       if pingTable.hasKey(ws.getFD().AsyncFD.int):
