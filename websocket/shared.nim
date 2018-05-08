@@ -179,6 +179,17 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
 
   result = f
 
+proc extractCloseData*(data: string): tuple[code: int, reason: string] =
+  ## A way to get the close code and reason out of the data of a Close opcode.
+  let len = data.len
+  var data = data
+  result.code =
+    if len >= 2:
+      cast[ptr uint16](addr data[0])[].htons.int
+    else:
+      0
+  result.reason = if len > 2: data[2..^1] else: ""
+
 # Internal hashtable that tracks pings sent out, per socket.
 # key is the socket fd
 type PingRequest = Future[void] # tuple[data: string, fut: Future[void]]
@@ -214,7 +225,7 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
   while true:
     let f = await ws.recvFrame()
     # Merge sequentially read frames.
-    resultData &= f.data
+    resultData.add(f.data)
 
     case f.opcode
       of Opcode.Ping:
@@ -238,25 +249,18 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
         ws.close()
         raise newException(ProtocolError, "received invalid opcode: " & $f.opcode)
 
-    if resultOpcode == Opcode.Close:
-      let ex = newException(IOError, "socket closed by remote peer")
-
-      # optional 2 byte unsigned integer for close code
-      # optional string for close reason
-      if resultData.len >= 2:
-        ex.msg.add(", close code: " & $cast[ptr uint16](resultData[0].addr)[].htons.int)
-        if resultData.len > 2:
-          ex.msg.add(", reason: " & resultData[2..^1])
-
-      # handle case: ping never arrives and client closes the connection
-      if pingTable.hasKey(ws.getFD().AsyncFD.int):
-        pingTable[ws.getFD().AsyncFD.int].fail(ex)
-        pingTable.del(ws.getFD().AsyncFD.int)
-
-      raise ex
+    # handle case: ping never arrives and client closes the connection
+    if resultOpcode == Opcode.Close and pingTable.hasKey(ws.getFD().AsyncFD.int):
+      let closeData = extractCloseData(resultData)
+      let ex = newException(IOError, "socket closed while waiting for pong")
+      if closeData.code != 0:
+        ex.msg.add(", close code: " & $closeData.code)
+      if closeData.reason != "":
+        ex.msg.add(", reason: " & closeData.reason)
+      pingTable[ws.getFD().AsyncFD.int].fail(ex)
+      pingTable.del(ws.getFD().AsyncFD.int)
 
     return (resultOpcode, resultData)
-
 
 proc sendText*(ws: AsyncSocket, p: string, masked: bool = false): Future[void] {.async.} =
   ## Sends text data. Will only return after all data has been sent out.
