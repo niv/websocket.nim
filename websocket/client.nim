@@ -4,7 +4,8 @@
 ## .. code-block::nim
 ##   import websocket, asyncnet, asyncdispatch
 ##
-##   let ws = waitFor newAsyncWebsocketClient("localhost", Port(8080), path = "/")
+##   let ws = waitFor newAsyncWebsocketClient("localhost", Port(8080),
+##     path = "/", protocols = @["myfancyprotocol"])
 ##   echo "connected!"
 ##
 ##   proc ping() {.async.} =
