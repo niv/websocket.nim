@@ -1,7 +1,6 @@
 import ../websocket, asyncnet, asyncdispatch
 
-let ws = waitFor newAsyncWebsocketClient("echo.websocket.org",
-  Port 80, "/?encoding=text", ssl = false)
+let ws = waitFor newAsyncWebsocketClient("localhost", Port(8080), path = "/")
 echo "connected!"
 
 proc ping() {.async.} =
@@ -12,8 +11,8 @@ proc ping() {.async.} =
 
 proc read() {.async.} =
   while true:
-    let data = await ws.readData()
-    echo "(opcode: ", data.opcode, ", data: ", data.data, ")"
+    let (opcode, data) = await ws.readData()
+    echo "(opcode: ", opcode, ", data: ", data, ")"
 
 asyncCheck read()
 asyncCheck ping()
