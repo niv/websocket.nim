@@ -43,6 +43,18 @@ import private/hex
 
 import shared
 
+proc makeHandshakeResponse*(key, protocol: string): string =
+  let sh = secureHash(key & "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+  let acceptKey = decodeHex($sh).encode
+
+  result = "HTTP/1.1 101 Web Socket Protocol Handshake\c\L"
+  result.add("Sec-Websocket-Accept: " & acceptKey & "\c\L")
+  result.add("Connection: Upgrade\c\L")
+  result.add("Upgrade: websocket\c\L")
+  if not protocol.isNilOrEmpty:
+    result.add("Sec-Websocket-Protocol: " & protocol & "\c\L")
+  result.add "\c\L"
+
 proc verifyWebsocketRequest*(req: Request, protocol = ""):
     Future[tuple[ws: AsyncWebSocket, error: string]] {.async.} =
 
@@ -76,32 +88,24 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   if not req.headers.hasKey("sec-websocket-key"):
     reterr "no sec-websocket-key provided"
 
-  let isProtocolEmpty = protocol == ""
+  let noProtocol = protocol.isNilOrEmpty
 
   if req.headers.hasKey("sec-websocket-protocol"):
-    if isProtocolEmpty:
+    if noProtocol:
       reterr "server does not support protocol negotation"
 
     block protocolCheck:
       let prot = protocol.toLowerAscii()
 
-      for it in req.headers["sec-websocket-protocol"].split(", "):
+      for it in req.headers["sec-websocket-protocol"].split(','):
         if prot == it.strip.toLowerAscii():
           break protocolCheck
 
       reterr "no advertised protocol supported; server speaks `" & protocol & "`"
-  elif not isProtocolEmpty:
+  elif not noProtocol:
     reterr "no protocol advertised, but server demands `" & protocol & "`"
 
-  let sh = secureHash(req.headers["sec-websocket-key"] &
-    "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
-  let acceptKey = decodeHex($sh).encode
-  var msg = "HTTP/1.1 101 Web Socket Protocol Handshake\c\L"
-  msg.add("Sec-Websocket-Accept: " & acceptKey & "\c\L")
-  msg.add("Connection: Upgrade\c\L")
-  msg.add("Upgrade: websocket\c\L")
-  if not isProtocolEmpty: msg.add("Sec-Websocket-Protocol: " & protocol & "\c\L")
-  msg.add "\c\L"
+  let msg = makeHandshakeResponse(req.headers["sec-websocket-key"], protocol)
   await req.client.send(msg)
 
   new(result.ws)
