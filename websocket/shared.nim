@@ -22,6 +22,10 @@ type
 
     masked: bool ## If the frame was received masked/is supposed to be masked.
                  ## Do not mask data yourself.
+    
+    maskingKey: string ## The masking key if the frame is supposed to be masked.
+                       ## If masked is false, this is an empty string.
+                       ## Otherwise, length must be 4.
 
     opcode: Opcode ## The opcode of this frame.
 
@@ -50,6 +54,13 @@ proc htonll(x: uint64): uint64 =
                  (x shr 24'u64 and 0xff0000000000'u64) or
                  (x shl 40'u64 and 0xff000000000000'u64) or
                  (x shl 56'u64)
+
+proc mask*(data: var string, maskingKey: string) =
+  for i in 0..data.high:
+    data[i] = (data[i].uint8 xor maskingKey[i mod 4].uint8).char
+
+template unmask*(data: var string, maskingKey: string): auto =
+  mask(data, maskingKey)
 
 proc makeFrame*(f: Frame): string =
   ## Generate valid websocket frame data, ready to be sent over the wire.
@@ -86,22 +97,11 @@ proc makeFrame*(f: Frame): string =
   var data = f.data
 
   if f.masked:
-    # TODO: proper rng
+    assert f.maskingKey.len == 4
 
-    # for compatibility with renaming of random
-    template rnd(x: untyped): untyped =
-      when declared(random.rand):
-        rand(x-1)
-      else:
-        random(x)
+    mask(data, f.maskingKey)
 
-    randomize()
-    let maskingKey = [ rnd(256).char, rnd(256).char,
-      rnd(256).char, rnd(256).char ]
-
-    for i in 0..<length: data[i] = (data[i].uint8 xor maskingKey[i mod 4].uint8).char
-
-    ret.write(maskingKey)
+    ret.write(f.maskingKey)
 
   ret.write(data)
   ret.setPosition(0)
@@ -114,10 +114,26 @@ proc makeFrame*(f: Frame): string =
     length
   ))
 
-proc makeFrame*(opcode: Opcode, data: string, masked: bool): string =
+proc makeFrame*(opcode: Opcode, data: string, maskingKey: string): string =
   ## A convenience shorthand.
+  ## Masking key must be an empty string if the frame isn't masked.
   result = makeFrame((fin: true, rsv1: false, rsv2: false, rsv3: false,
-    masked: masked, opcode: opcode, data: data))
+    masked: maskingKey.len != 0, maskingKey: maskingKey,
+    opcode: opcode, data: data))
+
+proc makeFrame*(opcode: Opcode, data: string, masked: bool): string {.deprecated.} =
+  ## A convenience shorthand.
+  ## Deprecated since 0.3.2: Use makeFrame(opcode, data, maskingKey) instead.
+  result = makeFrame(opcode, data,
+    if masked:
+      template rnd: untyped =
+        when declared(random.rand):
+          rand(255).char
+        else:
+          random(256).char
+      cast[string](@[rnd, rnd, rnd, rnd])
+    else:
+      "")
 
 proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
   ## Read a full frame off the given socket.
@@ -165,40 +181,38 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
     else: hdrLen
 
   f.masked = (b1 and 0x80) == 0x80
-  var maskingKey = ""
   if f.masked:
-    maskingKey = await ws.recv(4, {})
-    # maskingKey = cast[ptr uint32](lenstr[0].addr)[]
+    f.maskingKey = await ws.recv(4, {})
+  else:
+    f.maskingKey = ""
 
   f.data = await ws.recv(finalLen, {})
   if f.data.len != finalLen: raise newException(IOError, "socket closed")
 
   if f.masked:
-    for i in 0..<f.data.len:
-      f.data[i] = (f.data[i].uint8 xor maskingKey[i mod 4].uint8).char
+    unmask(f.data, f.maskingKey)
 
   result = f
 
 proc extractCloseData*(data: string): tuple[code: int, reason: string] =
   ## A way to get the close code and reason out of the data of a Close opcode.
-  let len = data.len
   var data = data
   result.code =
-    if len >= 2:
+    if data.len >= 2:
       cast[ptr uint16](addr data[0])[].htons.int
     else:
       0
-  result.reason = if len > 2: data[2..^1] else: ""
+  result.reason = if data.len > 2: data[2..^1] else: ""
 
 # Internal hashtable that tracks pings sent out, per socket.
 # key is the socket fd
 type PingRequest = Future[void] # tuple[data: string, fut: Future[void]]
 
-var reqPing {.threadvar.}: Option[Table[int, PingRequest]]
+when not defined(websocketIgnorePing):
+  var reqPing {.threadvar.}: Option[Table[int, PingRequest]]
 
-proc readData*(ws: AsyncSocket, isClientSocket: bool):
+proc readData*(ws: AsyncSocket):
     Future[tuple[opcode: Opcode, data: string]] {.async.} =
-
   ## Reads reassembled data off the websocket and give you joined frame data.
   ##
   ## Note: You will still see control frames, but they are all handled for you
@@ -207,20 +221,17 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
   ## The only ones you need to care about are Opcode.Text and Opcode.Binary, the
   ## so-called application frames.
   ##
-  ## As per the websocket specifications, all clients need to mask their responses.
-  ## It is up to you to to set `isClientSocket` with a proper value, depending on
-  ## if you are reading from a server or client socket.
-  ##
   ## Will raise IOError when the socket disconnects and ProtocolError on any
   ## websocket-related issues.
 
   var resultData = ""
   var resultOpcode: Opcode
 
-  if reqPing.isNone:
-    reqPing = some(initTable[int, PingRequest]())
+  when not defined(websocketIgnorePing):
+    if reqPing.isNone:
+      reqPing = some(initTable[int, PingRequest]())
 
-  var pingTable = reqPing.unsafeGet()
+    var pingTable = reqPing.unsafeGet()
 
   while true:
     let f = await ws.recvFrame()
@@ -228,65 +239,66 @@ proc readData*(ws: AsyncSocket, isClientSocket: bool):
     resultData.add(f.data)
 
     case f.opcode
-      of Opcode.Ping:
-        await ws.send(makeFrame(Opcode.Pong, f.data, isClientSocket))
+    of Opcode.Ping:
+      when not defined(websocketIgnorePing):
+        await ws.send(makeFrame(Opcode.Pong, f.data, true))
 
-      of Opcode.Pong:
+    of Opcode.Pong:
+      when not defined(websocketIgnorePing):
         if pingTable.hasKey(ws.getFD().AsyncFD.int):
           pingTable[ws.getFD().AsyncFD.int].complete()
 
-        else: discard  # thanks, i guess?
+    of Opcode.Cont:
+      if not f.fin: continue
 
-      of Opcode.Cont:
-        if not f.fin: continue
+    of Opcode.Text, Opcode.Binary, Opcode.Close:
+      resultOpcode = f.opcode
+      # read another!
+      if not f.fin: continue
 
-      of Opcode.Text, Opcode.Binary, Opcode.Close:
-        resultOpcode = f.opcode
-        # read another!
-        if not f.fin: continue
-
-      else:
-        ws.close()
-        raise newException(ProtocolError, "received invalid opcode: " & $f.opcode)
+    else:
+      ws.close()
+      raise newException(ProtocolError, "received invalid opcode: " & $f.opcode)
 
     # handle case: ping never arrives and client closes the connection
-    if resultOpcode == Opcode.Close and pingTable.hasKey(ws.getFD().AsyncFD.int):
-      let closeData = extractCloseData(resultData)
-      let ex = newException(IOError, "socket closed while waiting for pong")
-      if closeData.code != 0:
-        ex.msg.add(", close code: " & $closeData.code)
-      if closeData.reason != "":
-        ex.msg.add(", reason: " & closeData.reason)
-      pingTable[ws.getFD().AsyncFD.int].fail(ex)
-      pingTable.del(ws.getFD().AsyncFD.int)
+    when not defined(websocketIgnorePing):
+      if resultOpcode == Opcode.Close and pingTable.hasKey(ws.getFD().AsyncFD.int):
+        let closeData = extractCloseData(resultData)
+        let ex = newException(IOError, "socket closed while waiting for pong")
+        if closeData.code != 0:
+          ex.msg.add(", close code: " & $closeData.code)
+        if closeData.reason != "":
+          ex.msg.add(", reason: " & closeData.reason)
+        pingTable[ws.getFD().AsyncFD.int].fail(ex)
+        pingTable.del(ws.getFD().AsyncFD.int)
 
     return (resultOpcode, resultData)
 
-proc sendText*(ws: AsyncSocket, p: string, masked: bool = false): Future[void] {.async.} =
+proc sendText*(ws: AsyncSocket, p: string, maskingKey = ""): Future[void] {.async.} =
   ## Sends text data. Will only return after all data has been sent out.
-  await ws.send(makeFrame(Opcode.Text, p, masked))
+  await ws.send(makeFrame(Opcode.Text, p, maskingKey))
 
-proc sendBinary*(ws: AsyncSocket, p: string, masked: bool = false): Future[void] {.async.} =
+proc sendBinary*(ws: AsyncSocket, p: string, maskingKey = ""): Future[void] {.async.} =
   ## Sends binary data. Will only return after all data has been sent out.
-  await ws.send(makeFrame(Opcode.Binary, p, masked))
+  await ws.send(makeFrame(Opcode.Binary, p, maskingKey))
 
-proc sendPing*(ws: AsyncSocket, masked: bool = false, token: string = ""): Future[void] {.async.} =
+proc sendPing*(ws: AsyncSocket, maskingKey = "", token: string = ""): Future[void] {.async.} =
   ## Sends a WS ping message.
   ## Will generate a suitable token if you do not provide one.
 
   let pingId = if token == "": $genOid() else: token
-  await ws.send(makeFrame(Opcode.Ping, pingId, masked))
+  await ws.send(makeFrame(Opcode.Ping, pingId, maskingKey))
 
-  # Old crud: send/wait. Very deadlocky.
-  # let start = epochTime()
-  # let pingId: string = $genOid()
-  # var fut = newFuture[void]()
-  # await ws.send(makeFrame(Opcode.Ping, pingId))
-  # reqPing[ws.getFD().AsyncFD.int] = fut
-  # echo "waiting"
-  # await fut
-  # reqPing.del(ws.getFD().AsyncFD.int)
-  # result = ((epochTime() - start).float64 * 1000).int
+proc sendChain*(ws: AsyncSocket, p: seq[string], opcode = Opcode.Text, maskingKeys: seq[string] = @[]): Future[void] {.async.} =
+  ## Sends data over multiple frames. Will only return after all data has been sent out.
+  for i, data in p:
+    let maskKey = if i < maskingKeys.len: maskingKeys[i] else: ""
+    let f: Frame = (fin: i == p.high,
+      rsv1: false, rsv2: false, rsv3: false,
+      masked: maskKey.len != 0, maskingKey: maskKey,
+      opcode: if i == 0: opcode else: Opcode.Cont,
+      data: data)
+    await ws.send(makeFrame(f))
 
 proc readData*(ws: AsyncWebSocket): Future[tuple[opcode: Opcode, data: string]] =
   ## Reads reassembled data off the websocket and give you joined frame data.
@@ -300,20 +312,20 @@ proc readData*(ws: AsyncWebSocket): Future[tuple[opcode: Opcode, data: string]] 
   ## Will raise IOError when the socket disconnects and ProtocolError on any
   ## websocket-related issues.
 
-  result = readData(ws.sock, ws.kind == SocketKind.Client)
+  result = readData(ws.sock)
 
-proc sendText*(ws: AsyncWebSocket, p: string, masked: bool = false): Future[void] =
+proc sendText*(ws: AsyncWebSocket, p: string, maskingKey = ""): Future[void] =
   ## Sends text data. Will only return after all data has been sent out.
-  result = sendText(ws.sock, p, masked)
+  result = sendText(ws.sock, p, maskingKey)
 
-proc sendBinary*(ws: AsyncWebSocket, p: string, masked: bool = false): Future[void] =
+proc sendBinary*(ws: AsyncWebSocket, p: string, maskingKey = ""): Future[void] =
   ## Sends binary data. Will only return after all data has been sent out.
-  result = sendBinary(ws.sock, p, masked)
+  result = sendBinary(ws.sock, p, maskingKey)
 
-proc sendPing*(ws: AsyncWebSocket, masked: bool = false, token: string = ""): Future[void] =
+proc sendPing*(ws: AsyncWebSocket, maskingKey = "", token: string = ""): Future[void] =
   ## Sends a WS ping message.
   ## Will generate a suitable token if you do not provide one.
-  result = sendPing(ws.sock, masked, token)
+  result = sendPing(ws.sock, maskingKey, token)
 
 proc closeWebsocket*(ws: AsyncSocket, code = 0, reason = ""): Future[void] {.async.} =
   ## Closes the socket.
@@ -328,7 +340,7 @@ proc closeWebsocket*(ws: AsyncSocket, code = 0, reason = ""): Future[void] {.asy
   if reason != "":
     data.write(reason)
 
-  await ws.send(makeFrame(Opcode.Close, data.readAll(), true))
+  await ws.send(makeFrame(Opcode.Close, data.readAll(), ""))
 
 proc close*(ws: AsyncWebSocket, code = 0, reason = ""): Future[void] =
   ## Closes the socket.
