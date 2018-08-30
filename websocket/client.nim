@@ -162,7 +162,7 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = defaultSslContext()
    ): Future[AsyncWebSocket] {.deprecated.} =
-  ## Deprecated since 0.3.0: Use `newAsyncWebsocketClient`:idx: instead.
+  ## **Deprecated since 0.3.0**: Use `newAsyncWebsocketClient`:idx: instead.
   result = newAsyncWebsocketClient(host, port, path, ssl, additionalHeaders, protocols, userAgent, ctx)
 
 proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[],
@@ -170,7 +170,7 @@ proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[]
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = defaultSslContext()
    ): Future[AsyncWebSocket] {.deprecated.} =
-  ## Deprecated since 0.3.0: Use `newAsyncWebsocketClient`:idx: instead.
+  ## **Deprecated since 0.3.0**: Use `newAsyncWebsocketClient`:idx: instead.
   result = newAsyncWebsocketClient(uri, additionalHeaders, protocols, userAgent, ctx)
 
 proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[],
@@ -178,5 +178,5 @@ proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = 
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = defaultSslContext()
    ): Future[AsyncWebSocket] {.deprecated.} =
-  ## Deprecated since 0.3.0: Use `newAsyncWebsocketClient`:idx: instead.
+  ## **Deprecated since 0.3.0**: Use `newAsyncWebsocketClient`:idx: instead.
   result = newAsyncWebsocketClient(uri, additionalHeaders, protocols, userAgent, ctx)
