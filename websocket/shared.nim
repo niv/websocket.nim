@@ -21,11 +21,10 @@ type
     rsv3: bool ## Extension data: negotiated in http prequel, or 0.
 
     masked: bool ## If the frame was received masked/is supposed to be masked.
-                 ## Do not mask data yourself.
     
     maskingKey: string ## The masking key if the frame is supposed to be masked.
                        ## If masked is false, this is an empty string.
-                       ## Otherwise, length must be 4.
+                       ## Otherwise, length is 4.
 
     opcode: Opcode ## The opcode of this frame.
 
@@ -61,6 +60,19 @@ proc mask*(data: var string, maskingKey: string) =
 
 template unmask*(data: var string, maskingKey: string): auto =
   mask(data, maskingKey)
+
+proc generateMaskKey*: string =
+  template rnd: untyped =
+    when declared(random.rand):
+      rand(255).char
+    else:
+      random(256).char
+
+  result = newString(4)
+  result[0] = rnd
+  result[1] = rnd
+  result[2] = rnd
+  result[3] = rnd
 
 proc makeFrame*(f: Frame): string =
   ## Generate valid websocket frame data, ready to be sent over the wire.
@@ -114,26 +126,17 @@ proc makeFrame*(f: Frame): string =
     length
   ))
 
-proc makeFrame*(opcode: Opcode, data: string, maskingKey: string): string =
+proc makeFrame*(opcode: Opcode, data: string, maskingKey = generateMaskKey()): string =
   ## A convenience shorthand.
-  ## Masking key must be an empty string if the frame isn't masked.
   result = makeFrame((fin: true, rsv1: false, rsv2: false, rsv3: false,
     masked: maskingKey.len != 0, maskingKey: maskingKey,
     opcode: opcode, data: data))
 
 proc makeFrame*(opcode: Opcode, data: string, masked: bool): string {.deprecated.} =
   ## A convenience shorthand.
-  ## Deprecated since 0.3.2: Use makeFrame(opcode, data, maskingKey) instead.
-  result = makeFrame(opcode, data,
-    if masked:
-      template rnd: untyped =
-        when declared(random.rand):
-          rand(255).char
-        else:
-          random(256).char
-      cast[string](@[rnd, rnd, rnd, rnd])
-    else:
-      "")
+  ## **Deprecated since 0.3.2**: Frames should always be masked, either
+  ## call makeFrame(opcode, data) or call makeFrame(opcode, data, maskingKey).
+  result = makeFrame(opcode, data, if masked: generateMaskKey() else: "")
 
 proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
   ## Read a full frame off the given socket.
@@ -241,7 +244,7 @@ proc readData*(ws: AsyncSocket):
     case f.opcode
     of Opcode.Ping:
       when not defined(websocketIgnorePing):
-        await ws.send(makeFrame(Opcode.Pong, f.data, true))
+        await ws.send(makeFrame(Opcode.Pong, f.data))
 
     of Opcode.Pong:
       when not defined(websocketIgnorePing):
@@ -274,15 +277,15 @@ proc readData*(ws: AsyncSocket):
 
     return (resultOpcode, resultData)
 
-proc sendText*(ws: AsyncSocket, p: string, maskingKey = ""): Future[void] {.async.} =
+proc sendText*(ws: AsyncSocket, p: string, maskingKey = generateMaskKey()): Future[void] {.async.} =
   ## Sends text data. Will only return after all data has been sent out.
   await ws.send(makeFrame(Opcode.Text, p, maskingKey))
 
-proc sendBinary*(ws: AsyncSocket, p: string, maskingKey = ""): Future[void] {.async.} =
+proc sendBinary*(ws: AsyncSocket, p: string, maskingKey = generateMaskKey()): Future[void] {.async.} =
   ## Sends binary data. Will only return after all data has been sent out.
   await ws.send(makeFrame(Opcode.Binary, p, maskingKey))
 
-proc sendPing*(ws: AsyncSocket, maskingKey = "", token: string = ""): Future[void] {.async.} =
+proc sendPing*(ws: AsyncSocket, maskingKey = generateMaskKey(), token: string = ""): Future[void] {.async.} =
   ## Sends a WS ping message.
   ## Will generate a suitable token if you do not provide one.
 
@@ -292,7 +295,7 @@ proc sendPing*(ws: AsyncSocket, maskingKey = "", token: string = ""): Future[voi
 proc sendChain*(ws: AsyncSocket, p: seq[string], opcode = Opcode.Text, maskingKeys: seq[string] = @[]): Future[void] {.async.} =
   ## Sends data over multiple frames. Will only return after all data has been sent out.
   for i, data in p:
-    let maskKey = if i < maskingKeys.len: maskingKeys[i] else: ""
+    let maskKey = if i < maskingKeys.len: maskingKeys[i] else: generateMaskKey()
     let f: Frame = (fin: i == p.high,
       rsv1: false, rsv2: false, rsv3: false,
       masked: maskKey.len != 0, maskingKey: maskKey,
@@ -314,15 +317,15 @@ proc readData*(ws: AsyncWebSocket): Future[tuple[opcode: Opcode, data: string]] 
 
   result = readData(ws.sock)
 
-proc sendText*(ws: AsyncWebSocket, p: string, maskingKey = ""): Future[void] =
+proc sendText*(ws: AsyncWebSocket, p: string, maskingKey = generateMaskKey()): Future[void] =
   ## Sends text data. Will only return after all data has been sent out.
   result = sendText(ws.sock, p, maskingKey)
 
-proc sendBinary*(ws: AsyncWebSocket, p: string, maskingKey = ""): Future[void] =
+proc sendBinary*(ws: AsyncWebSocket, p: string, maskingKey = generateMaskKey()): Future[void] =
   ## Sends binary data. Will only return after all data has been sent out.
   result = sendBinary(ws.sock, p, maskingKey)
 
-proc sendPing*(ws: AsyncWebSocket, maskingKey = "", token: string = ""): Future[void] =
+proc sendPing*(ws: AsyncWebSocket, maskingKey = generateMaskKey(), token: string = ""): Future[void] =
   ## Sends a WS ping message.
   ## Will generate a suitable token if you do not provide one.
   result = sendPing(ws.sock, maskingKey, token)
