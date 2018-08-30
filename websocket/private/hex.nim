@@ -6,9 +6,8 @@ proc nibbleFromChar(c: char): int =
   else: discard 255
 
 proc decodeHex*(str: string): string =
-  let length = len(str) div 2
-  result = newString(length)
-  for i in 0..<length:
+  result = newString(str.len div 2)
+  for i in 0..<result.len:
     result[i] = chr((nibbleFromChar(str[2 * i]) shl 4) or nibbleFromChar(str[2 * i + 1]))
 
 proc nibbleToChar(nibble: int): char {.inline.} =
@@ -16,9 +15,8 @@ proc nibbleToChar(nibble: int): char {.inline.} =
   return byteMap[nibble]
 
 proc encodeHex*(str: string): string =
-  let length = len(str)
-  result = newString(length * 2)
-  for i in 0..<length:
+  result = newString(str.len * 2)
+  for i in 0..<str.len:
     let a = ord(str[i]) shr 4 and 0x0f
     let b = ord(str[i]) and 0x0f
     result[i * 2] = nibbleToChar(a)

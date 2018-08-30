@@ -23,8 +23,13 @@
 ##   asyncCheck ping()
 ##   runForever()
 
-import net, asyncdispatch, asyncnet, base64, times, strutils, securehash,
+import net, asyncdispatch, asyncnet, base64, times, strutils,
   nativesockets, streams, tables, oids, uri
+
+when NimMinor < 18:
+  import securehash
+else:
+  import std/sha1
 
 import shared
 
@@ -56,7 +61,11 @@ proc newAsyncWebsocketClient*(host: string, port: Port, path: string, ssl = fals
   ## The negotiated protocol is in `AsyncWebSocket.protocol`.
 
   let
-    keyDec = align($(getTime().toUnix), 16, '#')
+    keyDec = align(
+      when declared(toUnix):
+        $getTime().toUnix
+      else:
+        $getTime().toSeconds.int64, 16, '#')
     key = encode(keyDec)
     s = newAsyncSocket()
 
@@ -78,7 +87,7 @@ proc newAsyncWebsocketClient*(host: string, port: Port, path: string, ssl = fals
   msg.add("Cache-Control: no-cache\c\L")
   msg.add("Sec-WebSocket-Key: " & key & "\c\L")
   msg.add("Sec-WebSocket-Version: 13\c\L")
-  if protocols.len > 0:
+  if protocols.len != 0:
     msg.add("Sec-WebSocket-Protocol: " & protocols.join(", ") & "\c\L")
   for h in additionalHeaders:
     msg.add(h[0] & ": " & h[1] & "\c\L")
@@ -102,7 +111,7 @@ proc newAsyncWebsocketClient*(host: string, port: Port, path: string, ssl = fals
     let sp = ln.split(": ")
     if sp.len < 2: continue
     if sp[0].toLowerAscii == "sec-websocket-protocol":
-      if protocols.len > 0 and protocols.find(sp[1]) == -1:
+      if protocols.len != 0 and protocols.find(sp[1]) == -1:
         raise newException(ProtocolError, "server does not support any of our protocols")
       else: ws.protocol = sp[1]
 
@@ -153,6 +162,7 @@ proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = defaultSslContext()
    ): Future[AsyncWebSocket] {.deprecated.} =
+  ## Deprecated since 0.3.0: Use `newAsyncWebsocketClient`:idx: instead.
   result = newAsyncWebsocketClient(host, port, path, ssl, additionalHeaders, protocols, userAgent, ctx)
 
 proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[],
@@ -160,6 +170,7 @@ proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[]
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = defaultSslContext()
    ): Future[AsyncWebSocket] {.deprecated.} =
+  ## Deprecated since 0.3.0: Use `newAsyncWebsocketClient`:idx: instead.
   result = newAsyncWebsocketClient(uri, additionalHeaders, protocols, userAgent, ctx)
 
 proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[],
@@ -167,7 +178,5 @@ proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = 
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = defaultSslContext()
    ): Future[AsyncWebSocket] {.deprecated.} =
+  ## Deprecated since 0.3.0: Use `newAsyncWebsocketClient`:idx: instead.
   result = newAsyncWebsocketClient(uri, additionalHeaders, protocols, userAgent, ctx)
-
-# proc sendFrameData(ws: AsyncWebSocket, data: string): Future[void] {.async.} =
-#   await ws.sock.send(data)

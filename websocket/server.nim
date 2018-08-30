@@ -36,8 +36,13 @@
 ##
 ##   waitFor server.serve(Port(8080), cb)
 
-import asyncnet, asyncdispatch, asynchttpserver, strtabs, base64, securehash,
+import asyncnet, asyncdispatch, asynchttpserver, strtabs, base64,
   strutils, sequtils
+
+when NimMinor < 18:
+  import securehash
+else:
+  import std/sha1
 
 import private/hex
 
@@ -51,7 +56,7 @@ proc makeHandshakeResponse*(key, protocol: string): string =
   result.add("Sec-Websocket-Accept: " & acceptKey & "\c\L")
   result.add("Connection: Upgrade\c\L")
   result.add("Upgrade: websocket\c\L")
-  if not protocol.isNilOrEmpty:
+  if protocol.len != 0:
     result.add("Sec-Websocket-Protocol: " & protocol & "\c\L")
   result.add "\c\L"
 
@@ -88,10 +93,8 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   if not req.headers.hasKey("sec-websocket-key"):
     reterr "no sec-websocket-key provided"
 
-  let noProtocol = protocol.isNilOrEmpty
-
   if req.headers.hasKey("sec-websocket-protocol"):
-    if noProtocol:
+    if protocol.len == 0:
       reterr "server does not support protocol negotation"
 
     block protocolCheck:
@@ -102,7 +105,7 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
           break protocolCheck
 
       reterr "no advertised protocol supported; server speaks `" & protocol & "`"
-  elif not noProtocol:
+  elif protocol.len != 0:
     reterr "no protocol advertised, but server demands `" & protocol & "`"
 
   let msg = makeHandshakeResponse(req.headers["sec-websocket-key"], protocol)
