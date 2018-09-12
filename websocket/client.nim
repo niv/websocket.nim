@@ -145,7 +145,11 @@ proc newAsyncWebsocketClient*(uri: Uri, additionalHeaders: seq[(string, string)]
     raise newException(ProtocolError, "uri scheme has to be 'ws' for plaintext or 'wss' for websocket over ssl.")
 
   let port = Port(uri.port.parseInt())
-  result = await newAsyncWebsocketClient(uri.hostname, port, uri.path, ssl,
+  var path = uri.path
+  if uri.query.len != 0:
+    path.add('?')
+    path.add(uri.query)
+  result = await newAsyncWebsocketClient(uri.hostname, port, path, ssl,
     additionalHeaders, protocols, userAgent, ctx)
 
 proc newAsyncWebsocketClient*(uri: string, additionalHeaders: seq[(string, string)] = @[],
