@@ -80,9 +80,8 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   ## After successful negotiation, you can immediately start sending/reading
   ## websocket frames.
 
-  template reterr(err: untyped) =
-    result.error = err
-    return
+  template reterr(err: untyped): untyped =
+    return (nil, err)
 
   # if req.headers.hasKey("sec-websocket-extensions"):
     # TODO: transparently support extensions
@@ -111,9 +110,5 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   let msg = makeHandshakeResponse(req.headers["sec-websocket-key"], protocol)
   await req.client.send(msg)
 
-  new(result.ws)
-  result.ws.kind = SocketKind.Server
-  result.ws.sock = req.client
-  result.ws.protocol = protocol
-
-  result.error = ""
+  return (AsyncWebSocket(kind: SocketKind.Server,
+    sock: req.client, protocol: protocol), "")
