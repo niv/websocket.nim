@@ -80,21 +80,18 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   ## After successful negotiation, you can immediately start sending/reading
   ## websocket frames.
 
-  template reterr(err: untyped): untyped =
-    return (nil, err)
-
   # if req.headers.hasKey("sec-websocket-extensions"):
     # TODO: transparently support extensions
 
   if req.headers.getOrDefault("sec-websocket-version") != "13":
-    reterr "the only supported sec-websocket-version is 13"
+    return (nil, "the only supported sec-websocket-version is 13")
 
   if not req.headers.hasKey("sec-websocket-key"):
-    reterr "no sec-websocket-key provided"
+    return (nil, "no sec-websocket-key provided")
 
   if req.headers.hasKey("sec-websocket-protocol"):
     if protocol.len == 0:
-      reterr "server does not support protocol negotation"
+      return (nil, "server does not support protocol negotation")
 
     block protocolCheck:
       let prot = protocol.toLowerAscii()
@@ -103,9 +100,9 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
         if prot == it.strip.toLowerAscii():
           break protocolCheck
 
-      reterr "no advertised protocol supported; server speaks `" & protocol & "`"
+      return (nil,  "no advertised protocol supported; server speaks `" & protocol & "`")
   elif protocol.len != 0:
-    reterr "no protocol advertised, but server demands `" & protocol & "`"
+    return (nil, "no protocol advertised, but server demands `" & protocol & "`")
 
   let msg = makeHandshakeResponse(req.headers["sec-websocket-key"], protocol)
   await req.client.send(msg)
