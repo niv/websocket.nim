@@ -162,7 +162,12 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
   f.rsv1 = b0[1]
   f.rsv2 = b0[2]
   f.rsv3 = b0[3]
-  f.opcode = (b0 and 0x0f).Opcode
+  let opc = b0 and 0x0f
+  try:
+    f.opcode = opc.Opcode
+  except RangeError:
+    ws.close()
+    raise newException(ProtocolError, "received invalid opcode: " & $opc)
 
   if f.rsv1 or f.rsv2 or f.rsv3:
     raise newException(ProtocolError,
@@ -261,10 +266,6 @@ proc readData*(ws: AsyncSocket):
       resultOpcode = f.opcode
       # read another!
       if not f.fin: continue
-
-    else:
-      ws.close()
-      raise newException(ProtocolError, "received invalid opcode: " & $f.opcode)
 
     # handle case: ping never arrives and client closes the connection
     when not defined(websocketIgnorePing):
