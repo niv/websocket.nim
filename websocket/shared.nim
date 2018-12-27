@@ -1,5 +1,5 @@
 import asyncdispatch, asyncnet, streams, nativesockets, strutils, tables,
-  times, oids, random, options
+  times, oids, random, options, endians
 
 type
   ProtocolError* = object of Exception
@@ -39,6 +39,16 @@ type
     kind*: SocketKind
 
   AsyncWebSocket* = ref AsyncWebSocketObj
+
+const
+  MaxHeaderSize = 14
+
+const
+  bit0 = 0x80
+
+  len7  = int64(125)
+  len16 = int64(not (uint16(0)))
+  len64 = int64(not (uint64(0)) shr 1)
 
 proc htonll(x: uint64): uint64 =
   ## Converts 64-bit unsigned integers from host to network byte order.
@@ -82,52 +92,46 @@ proc makeFrame*(f: Frame): string =
   ## This is useful for rolling your own impl, for example
   ## with AsyncHttpServer
 
-  var ret = newStringStream()
+  # Based on https://github.com/gobwas/ws/blob/6499edb2f13/write.go#L51
+  var header: array[MaxHeaderSize, byte]
+  if f.fin:
+    header[0] = header[0] or bit0
 
-  var b0: byte = (f.opcode.byte and 0x0f)
-  if f.fin: b0 = b0 or (1 shl 7)
-  if f.rsv1: b0 = b0 or (1 shl 6)
-  if f.rsv2: b0 = b0 or (1 shl 5)
-  if f.rsv3: b0 = b0 or (1 shl 4)
+  if f.rsv1: header[0] = header[0] or (1 shl 6)
+  if f.rsv2: header[0] = header[0] or (1 shl 5)
+  if f.rsv3: header[0] = header[0] or (1 shl 4)
 
-  ret.write(b0)
+  header[0] = header[0] or f.opcode.byte
 
-  var b1: byte = 0
-
-  let length = f.data.len
-  if length <= 125: b1 = length.uint8
-  elif length > 125 and length <= 0x7fff: b1 = 126u8
-  else: b1 = 127u8
-
-  let b1unmasked = b1
-  if f.masked: b1 = b1 or (1 shl 7)
-
-  ret.write(b1)
-
-  if b1unmasked == 126u8:
-    ret.write(length.uint16.htons)
-  elif b1unmasked == 127u8:
-    ret.write(length.uint64.htonll)
+  var headerLen = 2
+  let size = f.data.len
+  if size <= len7:
+    header[1] = byte(size)
+    headerLen = 2
+  elif size <= len16:
+    header[1] = 126
+    let value = uint16(size)
+    bigEndian16(addr header[2], unsafeAddr value)
+    headerLen = 4
+  elif size <= len64:
+    header[1] = 127
+    let value = uint64(size)
+    bigEndian64(addr header[2], unsafeAddr value)
+    headerLen = 10
+  else:
+    raise newException(ProtocolError, "Cannot handle such a long message.")
 
   var data = f.data
-
   if f.masked:
     assert f.maskingKey.len == 4
-
+    header[1] = header[1] or bit0
     mask(data, f.maskingKey)
+    copyMem(addr header[headerLen], unsafeAddr f.maskingKey[0], 4)
+    headerLen += 4
 
-    ret.write(f.maskingKey)
-
-  ret.write(data)
-  ret.setPosition(0)
-  result = ret.readAll()
-
-  assert(result.len == (
-    2 +
-    (if f.masked: 4 else: 0) +
-    (if b1unmasked == 126u8: 2 elif b1unmasked == 127u8: 8 else: 0) +
-    length
-  ))
+  result = newString(headerLen + data.len)
+  copyMem(addr result[0], addr header[0], headerLen)
+  copyMem(addr result[headerLen], addr data[0], data.len)
 
 proc makeFrame*(opcode: Opcode, data: string, maskingKey = generateMaskingKey()): string =
   ## A convenience shorthand.
@@ -167,7 +171,7 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
     f.opcode = opc.Opcode
   except RangeError:
     ws.close()
-    raise newException(ProtocolError, "received invalid opcode: " & $opc)
+    raise newException(ProtocolError, "received invalid opcode: " & repr(opc))
 
   if f.rsv1 or f.rsv2 or f.rsv3:
     raise newException(ProtocolError,
@@ -352,3 +356,16 @@ proc closeWebsocket*(ws: AsyncSocket, code = 0, reason = ""): Future[void] {.asy
 proc close*(ws: AsyncWebSocket, code = 0, reason = ""): Future[void] =
   ## Closes the socket.
   result = ws.sock.closeWebsocket(code, reason)
+
+when isMainModule:
+  block test1:
+    let expected = "\129\139key1#\0\21]\4E.^\25\9\29"
+    let got = makeFrame(Opcode.Text, "Hello World", "key1")
+    doAssert expected == got
+
+  block test2:
+    let payload = repeat("Hello World", 10000)
+    let got = makeFrame(Opcode.Text, payload, "key1")
+    let expected = "\129\255\0\0\0\0\0\1\173\176key1#\0\21]\4E.^\25\9\29y\14\9\21^K2\22C\7"
+    for i in 0 .. 34:
+      doAssert got[i] == expected[i], "Not equal, " & $i & ", " & got[i].repr & " but wanted " & expected[i].repr
