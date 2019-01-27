@@ -285,15 +285,22 @@ proc readData*(ws: AsyncSocket):
 
     return (resultOpcode, resultData)
 
-proc sendText*(ws: AsyncSocket, p: string, maskingKey = generateMaskingKey()): Future[void] {.async.} =
+proc sendText*(
+  ws: AsyncSocket, p: string,
+  maskingKey = generateMaskingKey()
+): Future[void] {.async, deprecated: "Use the AsyncWebSocket variant instead".} =
   ## Sends text data. Will only return after all data has been sent out.
   await ws.send(makeFrame(Opcode.Text, p, maskingKey))
 
-proc sendBinary*(ws: AsyncSocket, p: string, maskingKey = generateMaskingKey()): Future[void] {.async.} =
+proc sendBinary*(
+  ws: AsyncSocket, p: string, maskingKey = generateMaskingKey()
+): Future[void] {.async, deprecated: "Use the AsyncWebSocket variant instead".} =
   ## Sends binary data. Will only return after all data has been sent out.
   await ws.send(makeFrame(Opcode.Binary, p, maskingKey))
 
-proc sendPing*(ws: AsyncSocket, maskingKey = generateMaskingKey(), token: string = ""): Future[void] {.async.} =
+proc sendPing*(
+  ws: AsyncSocket, maskingKey = generateMaskingKey(), token: string = ""
+): Future[void] {.async, deprecated: "Use the AsyncWebSocket variant instead".} =
   ## Sends a WS ping message.
   ## Will generate a suitable token if you do not provide one.
 
@@ -327,16 +334,26 @@ proc readData*(ws: AsyncWebSocket): Future[tuple[opcode: Opcode, data: string]] 
 
 proc sendText*(ws: AsyncWebSocket, p: string, maskingKey = generateMaskingKey()): Future[void] =
   ## Sends text data. Will only return after all data has been sent out.
-  result = sendText(ws.sock, p, maskingKey)
+  let maskingKey =
+    if ws.kind == Server: ""
+    else: maskingKey
+  result = ws.sock.send(makeFrame(Opcode.Text, p, maskingKey))
 
 proc sendBinary*(ws: AsyncWebSocket, p: string, maskingKey = generateMaskingKey()): Future[void] =
   ## Sends binary data. Will only return after all data has been sent out.
-  result = sendBinary(ws.sock, p, maskingKey)
+  let maskingKey =
+    if ws.kind == Server: ""
+    else: maskingKey
+  result = ws.sock.send(makeFrame(Opcode.Binary, p, maskingKey))
 
-proc sendPing*(ws: AsyncWebSocket, maskingKey = generateMaskingKey(), token: string = ""): Future[void] =
+proc sendPing*(ws: AsyncWebSocket, maskingKey = generateMaskingKey(), token: string = "") {.async.} =
   ## Sends a WS ping message.
   ## Will generate a suitable token if you do not provide one.
-  result = sendPing(ws.sock, maskingKey, token)
+  let maskingKey =
+    if ws.kind == Server: ""
+    else: maskingKey
+  let pingId = if token == "": $genOid() else: token
+  await ws.sock.send(makeFrame(Opcode.Ping, pingId, maskingKey))
 
 proc closeWebsocket*(ws: AsyncSocket, code = 0, reason = ""): Future[void] {.async.} =
   ## Closes the socket.
