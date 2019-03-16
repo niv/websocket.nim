@@ -37,7 +37,7 @@
 ##   waitFor server.serve(Port(8080), cb)
 
 import asyncnet, asyncdispatch, asynchttpserver, strtabs, base64,
-  strutils, sequtils
+  strutils, sequtils, nativesockets
 
 when NimMinor < 18:
   import securehash
@@ -60,9 +60,38 @@ proc makeHandshakeResponse*(key, protocol: string): string =
     result.add("Sec-Websocket-Protocol: " & protocol & "\c\L")
   result.add "\c\L"
 
-proc verifyWebsocketRequest*(req: Request, protocol = ""):
-    Future[tuple[ws: AsyncWebSocket, error: string]] {.async.} =
+proc verifyHeaders(
+  headers: HttpHeaders, protocol: string
+): tuple[handshake: string, error: string] =
+  # if headers.hasKey("sec-websocket-extensions"):
+    # TODO: transparently support extensions
 
+  if headers.getOrDefault("sec-websocket-version") != "13":
+    return ("", "the only supported sec-websocket-version is 13")
+
+  if not headers.hasKey("sec-websocket-key"):
+    return ("", "no sec-websocket-key provided")
+
+  if headers.hasKey("sec-websocket-protocol"):
+    if protocol.len == 0:
+      return ("", "server does not support protocol negotation")
+
+    block protocolCheck:
+      let prot = protocol.toLowerAscii()
+
+      for it in headers["sec-websocket-protocol"].split(','):
+        if prot == it.strip.toLowerAscii():
+          break protocolCheck
+
+      return ("",  "no advertised protocol supported; server speaks `" & protocol & "`")
+  elif protocol.len != 0:
+    return ("", "no protocol advertised, but server demands `" & protocol & "`")
+
+  return (makeHandshakeResponse(headers["sec-websocket-key"], protocol), "")
+
+proc verifyWebsocketRequest*(
+  client: AsyncSocket, headers: HttpHeaders, protocol = ""
+): Future[tuple[ws: AsyncWebSocket, error: string]] {.async.} =
   ## Verifies the request is a websocket request:
   ## * Supports protocol version 13 only
   ## * Does not support extensions (yet)
@@ -79,33 +108,23 @@ proc verifyWebsocketRequest*(req: Request, protocol = ""):
   ##
   ## After successful negotiation, you can immediately start sending/reading
   ## websocket frames.
+  let (handshake, error) = verifyHeaders(headers, protocol)
+  if error.len > 0:
+    return (nil, error)
 
-  # if req.headers.hasKey("sec-websocket-extensions"):
-    # TODO: transparently support extensions
+  await client.send(handshake)
 
-  if req.headers.getOrDefault("sec-websocket-version") != "13":
-    return (nil, "the only supported sec-websocket-version is 13")
+  return (
+    AsyncWebSocket(
+      kind: SocketKind.Server,
+      sock: client,
+      protocol: protocol
+    ),
+    ""
+  )
 
-  if not req.headers.hasKey("sec-websocket-key"):
-    return (nil, "no sec-websocket-key provided")
-
-  if req.headers.hasKey("sec-websocket-protocol"):
-    if protocol.len == 0:
-      return (nil, "server does not support protocol negotation")
-
-    block protocolCheck:
-      let prot = protocol.toLowerAscii()
-
-      for it in req.headers["sec-websocket-protocol"].split(','):
-        if prot == it.strip.toLowerAscii():
-          break protocolCheck
-
-      return (nil,  "no advertised protocol supported; server speaks `" & protocol & "`")
-  elif protocol.len != 0:
-    return (nil, "no protocol advertised, but server demands `" & protocol & "`")
-
-  let msg = makeHandshakeResponse(req.headers["sec-websocket-key"], protocol)
-  await req.client.send(msg)
-
-  return (AsyncWebSocket(kind: SocketKind.Server,
-    sock: req.client, protocol: protocol), "")
+proc verifyWebsocketRequest*(
+  req: asynchttpserver.Request, protocol = ""
+): Future[tuple[ws: AsyncWebSocket, error: string]] =
+  ## Convenience wrapper for AsyncHttpServer requests.
+  return verifyWebsocketRequest(req.client, req.headers, protocol)
