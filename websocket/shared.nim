@@ -240,8 +240,6 @@ proc readData*(ws: AsyncSocket):
   ## websocket-related issues.
 
   var resultData = ""
-  var resultOpcode: Opcode
-
   when not defined(websocketIgnorePing):
     if reqPing.isNone:
       reqPing = some(initTable[int, PingRequest]())
@@ -262,18 +260,13 @@ proc readData*(ws: AsyncSocket):
       when not defined(websocketIgnorePing):
         if pingTable.hasKey(ws.getFD().AsyncFD.int):
           pingTable[ws.getFD().AsyncFD.int].complete()
-
-    of Opcode.Cont:
-      if not f.fin: continue
-
-    of Opcode.Text, Opcode.Binary, Opcode.Close:
-      resultOpcode = f.opcode
+    of Opcode.Text, Opcode.Binary, Opcode.Close, Opcode.Cont:
       # read another!
       if not f.fin: continue
 
     # handle case: ping never arrives and client closes the connection
     when not defined(websocketIgnorePing):
-      if resultOpcode == Opcode.Close and pingTable.hasKey(ws.getFD().AsyncFD.int):
+      if f.opcode == Opcode.Close and pingTable.hasKey(ws.getFD().AsyncFD.int):
         let closeData = extractCloseData(resultData)
         let ex = newException(IOError, "socket closed while waiting for pong")
         if closeData.code != 0:
@@ -283,7 +276,7 @@ proc readData*(ws: AsyncSocket):
         pingTable[ws.getFD().AsyncFD.int].fail(ex)
         pingTable.del(ws.getFD().AsyncFD.int)
 
-    return (resultOpcode, resultData)
+    return (f.opcode, resultData)
 
 proc sendText*(
   ws: AsyncSocket, p: string,
