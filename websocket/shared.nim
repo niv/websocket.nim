@@ -145,6 +145,9 @@ proc makeFrame*(opcode: Opcode, data: string, masked: bool): string {.deprecated
   ## call makeFrame(opcode, data) or call makeFrame(opcode, data, maskingKey).
   result = makeFrame(opcode, data, if masked: generateMaskingKey() else: "")
 
+proc raiseReadException(ws: AsyncSocket, kind: typedesc, msg: string) =
+  raise newException(kind, msg)
+
 proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
   ## Read a full frame off the given socket.
   ##
@@ -157,7 +160,7 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
 
   var f: Frame
   let hdr = await ws.recv(2)
-  if hdr.len != 2: raise newException(IOError, "socket closed")
+  if hdr.len != 2: ws.raiseReadException(IOError, "socket closed")
 
   let b0 = hdr[0].uint8
   let b1 = hdr[1].uint8
@@ -170,27 +173,26 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
   try:
     f.opcode = opc.Opcode
   except RangeError:
-    ws.close()
-    raise newException(ProtocolError, "received invalid opcode: " & repr(opc))
+    ws.raiseReadException(ProtocolError, "received invalid opcode: " & repr(opc))
 
   if f.rsv1 or f.rsv2 or f.rsv3:
-    raise newException(ProtocolError,
+    ws.raiseReadException(ProtocolError,
       "websocket tried to use non-negotiated extension")
 
   let hdrLen = int(b1 and 0x7f)
   let finalLen = case hdrLen:
     of 0x7e:
       var lenstr = await ws.recv(2, {})
-      if lenstr.len != 2: raise newException(IOError, "socket closed")
+      if lenstr.len != 2: ws.raiseReadException(IOError, "socket closed")
 
       cast[ptr uint16](lenstr[0].addr)[].htons.int
     of 0x7f:
       var lenstr = await ws.recv(8, {})
-      if lenstr.len != 8: raise newException(IOError, "socket closed")
+      if lenstr.len != 8: ws.raiseReadException(IOError, "socket closed")
 
       let realLen = cast[ptr uint64](lenstr[0].addr)[].htonll
       if realLen > high(int).uint64:
-        raise newException(IOError, "websocket payload too large")
+        ws.raiseReadException(IOError, "websocket payload too large")
 
       realLen.int
     else: hdrLen
@@ -202,7 +204,7 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
     f.maskingKey = ""
 
   f.data = await ws.recv(finalLen, {})
-  if f.data.len != finalLen: raise newException(IOError, "socket closed")
+  if f.data.len != finalLen: ws.raiseReadException(IOError, "socket closed")
 
   if f.masked:
     unmask(f.data, f.maskingKey)
