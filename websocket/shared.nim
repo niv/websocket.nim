@@ -21,7 +21,7 @@ type
     rsv3: bool ## Extension data: negotiated in http prequel, or 0.
 
     masked: bool ## If the frame was received masked/is supposed to be masked.
-    
+
     maskingKey: string ## The masking key if the frame is supposed to be masked.
                        ## If masked is false, this is an empty string.
                        ## Otherwise, length is 4.
@@ -29,10 +29,10 @@ type
     opcode: Opcode ## The opcode of this frame.
 
     data: string ## App data
-  
+
   SocketKind* {.pure.} = enum
     Client, Server
-  
+
   AsyncWebSocketObj = object of RootObj
     sock*: AsyncSocket
     protocol*: string
@@ -131,7 +131,8 @@ proc makeFrame*(f: Frame): string =
 
   result = newString(headerLen + data.len)
   copyMem(addr result[0], addr header[0], headerLen)
-  copyMem(addr result[headerLen], addr data[0], data.len)
+  if data.len > 0:
+    copyMem(addr result[headerLen], addr data[0], data.len)
 
 proc makeFrame*(opcode: Opcode, data: string, maskingKey = generateMaskingKey()): string =
   ## A convenience shorthand.
