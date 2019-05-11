@@ -354,7 +354,8 @@ proc sendPing*(ws: AsyncWebSocket, maskingKey = generateMaskingKey(), token: str
 proc closeWebsocket*(ws: AsyncSocket, code = 0, reason = ""): Future[void] {.async.} =
   ## Closes the socket.
 
-  defer: ws.close()
+  defer:
+    ws.close()
 
   var data = newStringStream()
 
@@ -364,7 +365,11 @@ proc closeWebsocket*(ws: AsyncSocket, code = 0, reason = ""): Future[void] {.asy
   if reason != "":
     data.write(reason)
 
-  await ws.send(makeFrame(Opcode.Close, data.readAll()))
+  # We don't want to block forever if the socket never becomes writeable.
+  discard await withTimeout(
+    ws.send(makeFrame(Opcode.Close, data.readAll())),
+    1000
+  )
 
 proc close*(ws: AsyncWebSocket, code = 0, reason = ""): Future[void] =
   ## Closes the socket.
