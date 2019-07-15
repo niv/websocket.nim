@@ -26,8 +26,6 @@
 import net, asyncdispatch, asyncnet, base64, times, strutils,
   nativesockets, streams, tables, oids, uri
 
-import httpclient except ProtocolError
-
 when NimMinor < 18:
   import securehash
 else:
@@ -51,9 +49,7 @@ proc defaultSslContext: SslContext =
       doAssert(not result.isNil, "failure to initialize SSL context")
       defaultSsl = result
 
-
-
-proc newAsyncWebsocketClient*(uri: Uri,
+proc newAsyncWebsocketClient*(host: string, port: Port, path: string, ssl = false,
     additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
@@ -71,46 +67,90 @@ proc newAsyncWebsocketClient*(uri: Uri,
       else:
         $getTime().toSeconds.int64, 16, '#')
     key = encode(keyDec)
+    s = newAsyncSocket()
 
-  if uri.scheme notin ["ws", "wss"]:
-    raise newException(ProtocolError,
-      "uri scheme has to be 'ws' for plaintext or 'wss' for websocket over ssl.")
+  if ssl:
+    when not defined(ssl):
+      raise newException(Exception, "Cannot connect over SSL without -d:ssl")
+    else:
+      ctx.wrapSocket(s)
 
-  var client = newAsyncHttpClient()
-  client.headers = newHttpHeaders({
-    "Connection": "Upgrade",
-    "Upgrade": "websocket",
-    "User-Agent": userAgent,
-    "Cache-Control": "no-cache",
-    "Sec-WebSocket-Version": "13",
-    "Sec-WebSocket-Key": key
-  })
+  await s.connect(host, port)
+  var msg = "GET " & path & " HTTP/1.1\c\L"
+  if port != Port(80):
+    msg.add("Host: " & host & ":" & $port & "\c\L")
+  else:
+    msg.add("Host: " & host & "\c\L")
+  msg.add("User-Agent: " & userAgent & "\c\L")
+  msg.add("Upgrade: websocket\c\L")
+  msg.add("Connection: Upgrade\c\L")
+  msg.add("Cache-Control: no-cache\c\L")
+  msg.add("Sec-WebSocket-Key: " & key & "\c\L")
+  msg.add("Sec-WebSocket-Version: 13\c\L")
   if protocols.len != 0:
-    client.headers["Sec-WebSocket-Protocol"] = protocols.join(", ")
+    msg.add("Sec-WebSocket-Protocol: " & protocols.join(", ") & "\c\L")
   for h in additionalHeaders:
-    client.headers[h[0]] = h[1]
-  let resp = await client.get($uri)
-  if resp.code != Http101:
-    client.getSocket().close()
+    msg.add(h[0] & ": " & h[1] & "\c\L")
+  msg.add("\c\L")
+
+  await s.send(msg)
+
+  let hdr = await s.recvLine()
+  if not hdr.startsWith("HTTP/1.1 101 "):
+    s.close()
     raise newException(ProtocolError,
-      "Server did not reply with a websocket upgrade: " & $resp.code)
+      "server did not reply with a websocket upgrade: " & hdr)
 
   let ws = new AsyncWebSocket
   ws.kind = SocketKind.Client
-  ws.sock = client.getSocket()
+  ws.sock = s
+
+  while true:
+    let ln = await s.recvLine()
+    if ln == "\r\L": break
+    let sp = ln.split(": ")
+    if sp.len < 2: continue
+    if sp[0].toLowerAscii == "sec-websocket-protocol":
+      if protocols.len != 0 and protocols.find(sp[1]) == -1:
+        raise newException(ProtocolError, "server does not support any of our protocols")
+      else: ws.protocol = sp[1]
+
+    # raise newException(ProtocolError, "unknown server response " & ln)
+    if sp[0].toLowerAscii == "sec-websocket-accept":
+      # The server appends the fixed string 258EAFA5-E914-47DA-95CA-C5AB0DC85B11
+      # (a GUID) to the value from Sec-WebSocket-Key header (which is not decoded
+      # from base64), applies the SHA-1 hashing function, and encodes the result
+      # using base64.
+      let theirs = sp[1]
+      let expected = secureHash(key & "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+      if theirs != decodeHex($expected).encode:
+        raise newException(ProtocolError, "websocket-key did not match. proxy messing with you?")
 
   result = ws
 
-proc newAsyncWebsocketClient*(host: string, port: Port, path: string, ssl = false,
-    additionalHeaders: seq[(string, string)] = @[],
+proc newAsyncWebsocketClient*(uri: Uri, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
     ctx: SslContext = defaultSslContext()
-   ): Future[AsyncWebSocket]  =
-  newAsyncWebsocketClient(parseUri(
-    (if ssl: "wss" else: "ws") & "://" &
-    host & ":" & $port & "/" & path
-  ))
+   ): Future[AsyncWebSocket] {.async.} =
+
+  var ssl: bool
+
+  case uri.scheme
+  of "ws":
+    ssl = false
+  of "wss":
+    ssl = true
+  else:
+    raise newException(ProtocolError, "uri scheme has to be 'ws' for plaintext or 'wss' for websocket over ssl.")
+
+  let port = Port(uri.port.parseInt())
+  var path = uri.path
+  if uri.query.len != 0:
+    path.add('?')
+    path.add(uri.query)
+  result = await newAsyncWebsocketClient(uri.hostname, port, path, ssl,
+    additionalHeaders, protocols, userAgent, ctx)
 
 proc newAsyncWebsocketClient*(uri: string, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
