@@ -72,7 +72,13 @@ proc newAsyncWebsocketClient*(uri: Uri,
         $getTime().toSeconds.int64, 16, '#')
     key = encode(keyDec)
 
-  if uri.scheme notin ["ws", "wss"]:
+  var uri = uri
+  case uri.scheme
+  of "ws":
+    uri.scheme = "http"
+  of "wss":
+    uri.scheme = "https"
+  else:
     raise newException(ProtocolError,
       "uri scheme has to be 'ws' for plaintext or 'wss' for websocket over ssl.")
 
