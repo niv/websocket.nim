@@ -51,14 +51,8 @@ proc defaultSslContext: SslContext =
       doAssert(not result.isNil, "failure to initialize SSL context")
       defaultSsl = result
 
-
-
-proc newAsyncWebsocketClient*(uri: Uri,
-    additionalHeaders: seq[(string, string)] = @[],
-    protocols: seq[string] = @[],
-    userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = defaultSslContext()
-   ): Future[AsyncWebSocket] {.async.} =
+proc newAsyncWebsocketClient*(uri: Uri, client: AsyncHttpClient,
+    protocols: seq[string] = @[]): Future[AsyncWebSocket] {.async.} =
   ## Create a new websocket and connect immediately.
   ## Optionally give a list of protocols to negotiate; keep empty to accept the
   ## one the server offers (if any).
@@ -82,20 +76,16 @@ proc newAsyncWebsocketClient*(uri: Uri,
     raise newException(ProtocolError,
       "uri scheme has to be 'ws' for plaintext or 'wss' for websocket over ssl.")
 
-  var client = newAsyncHttpClient(sslContext = ctx)
-  client.headers = newHttpHeaders({
+  var headers = newHttpHeaders({
     "Connection": "Upgrade",
     "Upgrade": "websocket",
-    "User-Agent": userAgent,
     "Cache-Control": "no-cache",
     "Sec-WebSocket-Version": "13",
     "Sec-WebSocket-Key": key
   })
   if protocols.len != 0:
-    client.headers["Sec-WebSocket-Protocol"] = protocols.join(", ")
-  for h in additionalHeaders:
-    client.headers[h[0]] = h[1]
-  let resp = await client.get($uri)
+    headers["Sec-WebSocket-Protocol"] = protocols.join(", ")
+  let resp = await client.request($uri, "GET", headers = headers)
   if resp.code != Http101:
     client.getSocket().close()
     raise newException(ProtocolError,
@@ -107,46 +97,31 @@ proc newAsyncWebsocketClient*(uri: Uri,
 
   result = ws
 
-proc newAsyncWebsocketClient*(host: string, port: Port, path: string, ssl = false,
+proc newAsyncWebsocketClient*(uri: Uri,
     additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = defaultSslContext()
+    sslContext: SslContext = defaultSslContext()
+   ): Future[AsyncWebSocket] =
+  var client = newAsyncHttpClient(userAgent = userAgent, sslContext = sslContext)
+  client.headers = newHttpHeaders(additionalHeaders)
+  result = newAsyncWebsocketClient(uri, client, protocols)
+
+proc newAsyncWebsocketClient*(uri: string,
+    additionalHeaders: seq[(string, string)] = @[],
+    protocols: seq[string] = @[],
+    userAgent: string = WebsocketUserAgent,
+    sslContext: SslContext = defaultSslContext()
+   ): Future[AsyncWebSocket] =
+  result = newAsyncWebsocketClient(parseUri(uri),
+    additionalHeaders, protocols, userAgent, sslContext)
+
+proc newAsyncWebsocketClient*(host: string, port: Port, path: string,
+    ssl = false, additionalHeaders: seq[(string, string)] = @[],
+    protocols: seq[string] = @[],
+    userAgent: string = WebsocketUserAgent,
+    sslContext: SslContext = defaultSslContext()
    ): Future[AsyncWebSocket]  =
-  newAsyncWebsocketClient(parseUri(
-    (if ssl: "wss" else: "ws") & "://" &
-    host & ":" & $port & "/" & path
-  ))
-
-proc newAsyncWebsocketClient*(uri: string, additionalHeaders: seq[(string, string)] = @[],
-    protocols: seq[string] = @[],
-    userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = defaultSslContext()
-   ): Future[AsyncWebSocket] {.async.} =
-  let uriBuf = parseUri(uri)
-  result = await newAsyncWebsocketClient(uriBuf, additionalHeaders, protocols, userAgent, ctx)
-
-proc newAsyncWebsocket*(host: string, port: Port, path: string, ssl = false,
-    additionalHeaders: seq[(string, string)] = @[],
-    protocols: seq[string] = @[],
-    userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = defaultSslContext()
-   ): Future[AsyncWebSocket] {.deprecated.} =
-  ## **Deprecated since 0.3.0**: Use `newAsyncWebsocketClient`:idx: instead.
-  result = newAsyncWebsocketClient(host, port, path, ssl, additionalHeaders, protocols, userAgent, ctx)
-
-proc newAsyncWebsocket*(uri: Uri, additionalHeaders: seq[(string, string)] = @[],
-    protocols: seq[string] = @[],
-    userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = defaultSslContext()
-   ): Future[AsyncWebSocket] {.deprecated.} =
-  ## **Deprecated since 0.3.0**: Use `newAsyncWebsocketClient`:idx: instead.
-  result = newAsyncWebsocketClient(uri, additionalHeaders, protocols, userAgent, ctx)
-
-proc newAsyncWebsocket*(uri: string, additionalHeaders: seq[(string, string)] = @[],
-    protocols: seq[string] = @[],
-    userAgent: string = WebsocketUserAgent,
-    ctx: SslContext = defaultSslContext()
-   ): Future[AsyncWebSocket] {.deprecated.} =
-  ## **Deprecated since 0.3.0**: Use `newAsyncWebsocketClient`:idx: instead.
-  result = newAsyncWebsocketClient(uri, additionalHeaders, protocols, userAgent, ctx)
+  result = newAsyncWebsocketClient(
+    (if ssl: "wss" else: "ws") & "://" & host & ":" & $port & "/" & path,
+    additionalHeaders, protocols, userAgent, sslContext)
