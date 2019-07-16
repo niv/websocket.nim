@@ -82,7 +82,7 @@ proc newAsyncWebsocketClient*(uri: Uri,
     raise newException(ProtocolError,
       "uri scheme has to be 'ws' for plaintext or 'wss' for websocket over ssl.")
 
-  var client = newAsyncHttpClient()
+  var client = newAsyncHttpClient(sslContext = ctx)
   client.headers = newHttpHeaders({
     "Connection": "Upgrade",
     "Upgrade": "websocket",
