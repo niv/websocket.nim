@@ -39,17 +39,18 @@ import private/hex
 
 const WebsocketUserAgent* = "websocket.nim (https://github.com/niv/websocket.nim)"
 
-when not defined(ssl):
-  type SslContext = ref object
-var defaultSsl {.threadvar.}: SslContext
+when not declared(httpclient.getDefaultSsl):
+  when not defined(ssl):
+    type SslContext = ref object
+  var defaultSsl {.threadvar.}: SslContext
 
-proc defaultSslContext: SslContext =
-  result = defaultSsl
-  when defined(ssl):
-    if result.isNil:
-      result = newContext(protTLSv1, verifyMode = CVerifyNone)
-      doAssert(not result.isNil, "failure to initialize SSL context")
-      defaultSsl = result
+  proc getDefaultSsl: SslContext =
+    result = defaultSsl
+    when defined(ssl):
+      if result.isNil:
+        result = newContext(protTLSv1, verifyMode = CVerifyNone)
+        doAssert(not result.isNil, "failure to initialize SSL context")
+        defaultSsl = result
 
 proc newAsyncWebsocketClient*(uri: Uri, client: AsyncHttpClient,
     protocols: seq[string] = @[]): Future[AsyncWebSocket] {.async.} =
@@ -101,7 +102,7 @@ proc newAsyncWebsocketClient*(uri: Uri,
     additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    sslContext: SslContext = defaultSslContext()
+    sslContext: SslContext = getDefaultSsl()
    ): Future[AsyncWebSocket] =
   var client =
     when defined(ssl):
@@ -115,7 +116,7 @@ proc newAsyncWebsocketClient*(uri: string,
     additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    sslContext: SslContext = defaultSslContext()
+    sslContext: SslContext = getDefaultSsl()
    ): Future[AsyncWebSocket] =
   result = newAsyncWebsocketClient(parseUri(uri),
     additionalHeaders, protocols, userAgent, sslContext)
@@ -124,7 +125,7 @@ proc newAsyncWebsocketClient*(host: string, port: Port, path: string,
     ssl = false, additionalHeaders: seq[(string, string)] = @[],
     protocols: seq[string] = @[],
     userAgent: string = WebsocketUserAgent,
-    sslContext: SslContext = defaultSslContext()
+    sslContext: SslContext = getDefaultSsl()
    ): Future[AsyncWebSocket]  =
   result = newAsyncWebsocketClient(
     (if ssl: "wss" else: "ws") & "://" & host & ":" & $port & "/" & path,
