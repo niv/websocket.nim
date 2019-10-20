@@ -106,7 +106,7 @@ proc newAsyncWebsocketClient*(uri: Uri,
    ): Future[AsyncWebSocket] =
   var client =
     when defined(ssl):
-      newAsyncHttpClient(userAgent = userAgent, sslContext = sslContext)
+      newAsyncHttpClient(userAgent = userAgent, maxRedirects = 5, sslContext = sslContext)
     else:
       newAsyncHttpClient(userAgent = userAgent)
   client.headers = newHttpHeaders(additionalHeaders)
