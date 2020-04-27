@@ -39,7 +39,7 @@
 import asyncnet, asyncdispatch, asynchttpserver, strtabs, base64,
   strutils, sequtils, nativesockets
 
-when NimMinor < 18:
+when (NimMajor, NimMinor) < (0, 18):
   import securehash
 else:
   import std/sha1
