@@ -36,8 +36,8 @@
 ##
 ##   waitFor server.serve(Port(8080), cb)
 
-import asyncnet, asyncdispatch, asynchttpserver, strtabs, base64,
-  strutils, sequtils, nativesockets
+import asyncnet, asyncdispatch, asynchttpserver, base64,
+  strutils, nativesockets
 
 when (NimMajor, NimMinor) < (0, 18):
   import securehash

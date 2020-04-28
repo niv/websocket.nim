@@ -23,19 +23,12 @@
 ##   asyncCheck ping()
 ##   runForever()
 
-import net, asyncdispatch, asyncnet, base64, times, strutils,
-  nativesockets, streams, tables, oids, uri
+import net, asyncdispatch, asyncnet, base64,
+  times, strutils, nativesockets, uri
 
 import httpclient except ProtocolError
 
-when (NimMajor, NimMinor) < (0, 18):
-  import securehash
-else:
-  import std/sha1
-
 import shared
-
-import private/hex
 
 const WebsocketUserAgent* = "websocket.nim (https://github.com/niv/websocket.nim)"
 
@@ -68,7 +61,7 @@ proc newAsyncWebsocketClient*(uri: Uri, client: AsyncHttpClient,
     key = encode(keyDec)
 
   var uri = uri
-  case uri.scheme
+  case uri.scheme # this is scummy
   of "ws":
     uri.scheme = "http"
   of "wss":
@@ -92,11 +85,9 @@ proc newAsyncWebsocketClient*(uri: Uri, client: AsyncHttpClient,
     raise newException(ProtocolError,
       "Server did not reply with a websocket upgrade: " & $resp.code)
 
-  let ws = new AsyncWebSocket
-  ws.kind = SocketKind.Client
-  ws.sock = client.getSocket()
-
-  result = ws
+  new(result)
+  result.kind = SocketKind.Client
+  result.sock = client.getSocket()
 
 proc newAsyncWebsocketClient*(uri: Uri,
     additionalHeaders: seq[(string, string)] = @[],
@@ -104,7 +95,7 @@ proc newAsyncWebsocketClient*(uri: Uri,
     userAgent: string = WebsocketUserAgent,
     sslContext: SslContext = getDefaultSsl()
    ): Future[AsyncWebSocket] =
-  var client =
+  let client =
     when defined(ssl):
       newAsyncHttpClient(userAgent = userAgent, sslContext = sslContext)
     else:
@@ -128,5 +119,6 @@ proc newAsyncWebsocketClient*(host: string, port: Port, path: string,
     sslContext: SslContext = getDefaultSsl()
    ): Future[AsyncWebSocket]  =
   result = newAsyncWebsocketClient(
+    # string concatenation needed here in case `path` cotnains query
     (if ssl: "wss" else: "ws") & "://" & host & ":" & $port & "/" & path,
     additionalHeaders, protocols, userAgent, sslContext)

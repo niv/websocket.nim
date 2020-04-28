@@ -1,9 +1,12 @@
-import asyncdispatch, asyncnet, streams, nativesockets, strutils, tables,
-  times, oids, random, options, endians
+import asyncdispatch, asyncnet, streams, nativesockets,
+  strutils, times, oids, random, endians
+
+when (NimMajor, NimMinor) >= (0, 19):
+  type ProtocolError* = object of Defect
+else:
+  type ProtocolError* = object of Exception
 
 type
-  ProtocolError* = object of Exception
-
   Opcode* {.pure.} = enum
     Cont = 0x0 ## Continued Frame (when the previous was fin = 0)
     Text = 0x1 ## Text frames need to be valid UTF-8
@@ -16,12 +19,11 @@ type
     ## A frame read off the netlayer.
 
     fin: bool ## Last frame in current packet.
-    rsv1: bool ## Extension data: negotiated in http prequel, or 0.
-    rsv2: bool ## Extension data: negotiated in http prequel, or 0.
-    rsv3: bool ## Extension data: negotiated in http prequel, or 0.
+    rsv1, rsv2, rsv3: bool ## Extension data: negotiated in http prequel, or 0.
 
     masked: bool ## If the frame was received masked/is supposed to be masked.
 
+    # array[4, byte]? array[4, char]?
     maskingKey: string ## The masking key if the frame is supposed to be masked.
                        ## If masked is false, this is an empty string.
                        ## Otherwise, length is 4.
@@ -65,14 +67,16 @@ proc htonll(x: uint64): uint64 =
                  (x shl 56'u64)
 
 proc mask*(data: var string, maskingKey: string) =
-  for i in 0..data.high:
+  for i in 0 ..< data.len:
     data[i] = (data[i].uint8 xor maskingKey[i mod 4].uint8).char
 
 template unmask*(data: var string, maskingKey: string): auto =
   mask(data, maskingKey)
 
 proc generateMaskingKey*: string =
-  when not defined(websocketUnmaskedByDefault):
+  when defined(websocketUnmaskedByDefault):
+    result = ""
+  else:
     template rnd: untyped =
       when declared(random.rand):
         rand(255).char
@@ -84,8 +88,6 @@ proc generateMaskingKey*: string =
     result[1] = rnd
     result[2] = rnd
     result[3] = rnd
-  else:
-    result = ""
 
 proc makeFrame*(f: Frame): string =
   ## Generate valid websocket frame data, ready to be sent over the wire.
@@ -94,14 +96,8 @@ proc makeFrame*(f: Frame): string =
 
   # Based on https://github.com/gobwas/ws/blob/6499edb2f13/write.go#L51
   var header: array[MaxHeaderSize, byte]
-  if f.fin:
-    header[0] = header[0] or bit0
-
-  if f.rsv1: header[0] = header[0] or (1 shl 6)
-  if f.rsv2: header[0] = header[0] or (1 shl 5)
-  if f.rsv3: header[0] = header[0] or (1 shl 4)
-
-  header[0] = header[0] or f.opcode.byte
+  header[0] = (f.fin.byte shl 7) or (f.rsv1.byte shl 6) or
+    (f.rsv2.byte shl 5) or (f.rsv3.byte shl 4) or f.opcode.byte
 
   var headerLen = 2
   let size = f.data.len
@@ -227,6 +223,8 @@ proc extractCloseData*(data: string): tuple[code: int, reason: string] =
 type PingRequest = Future[void] # tuple[data: string, fut: Future[void]]
 
 when not defined(websocketIgnorePing):
+  import tables, options
+
   var reqPing {.threadvar.}: Option[Table[int, PingRequest]]
 
 proc readData*(ws: AsyncSocket):
