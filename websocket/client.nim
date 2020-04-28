@@ -28,7 +28,7 @@ import net, asyncdispatch, asyncnet, base64, times, strutils,
 
 import httpclient except ProtocolError
 
-when NimMinor < 18:
+when (NimMajor, NimMinor) < (0, 18):
   import securehash
 else:
   import std/sha1
