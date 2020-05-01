@@ -15,13 +15,14 @@ type
     Ping = 0x9 ## Ping
     Pong = 0xa ## Pong. Needs to echo back the app data in ping.
 
-  Frame* = tuple
+  Frame* = object
     ## A frame read off the netlayer.
 
-    fin: bool ## Last frame in current packet.
-    rsv1, rsv2, rsv3: bool ## Extension data: negotiated in http prequel, or 0.
+    fin {.bitsize: 1.}: bool ## Last frame in current packet.
+    rsv1 {.bitsize: 1.}, rsv2 {.bitsize: 1.}, rsv3 {.bitsize: 1.}: bool
+      ## Extension data: negotiated in http prequel, or 0.
 
-    masked: bool ## If the frame was received masked/is supposed to be masked.
+    masked {.bitsize: 1.}: bool ## If the frame was received masked/is supposed to be masked.
 
     # array[4, byte]? array[4, char]?
     maskingKey: string ## The masking key if the frame is supposed to be masked.
@@ -132,7 +133,7 @@ proc makeFrame*(f: Frame): string =
 
 proc makeFrame*(opcode: Opcode, data: string, maskingKey = generateMaskingKey()): string =
   ## A convenience shorthand.
-  result = makeFrame((fin: true, rsv1: false, rsv2: false, rsv3: false,
+  result = makeFrame(Frame(fin: true, rsv1: false, rsv2: false, rsv3: false,
     masked: maskingKey.len != 0, maskingKey: maskingKey,
     opcode: opcode, data: data))
 
@@ -305,7 +306,7 @@ proc sendChain*(ws: AsyncSocket, p: seq[string], opcode = Opcode.Text, maskingKe
   ## Sends data over multiple frames. Will only return after all data has been sent out.
   for i, data in p:
     let maskKey = if i < maskingKeys.len: maskingKeys[i] else: generateMaskingKey()
-    let f: Frame = (fin: i == p.high,
+    let f = Frame(fin: i == p.high,
       rsv1: false, rsv2: false, rsv3: false,
       masked: maskKey.len != 0, maskingKey: maskKey,
       opcode: if i == 0: opcode else: Opcode.Cont,
