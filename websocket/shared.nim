@@ -170,7 +170,7 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
   try:
     f.opcode = opc.Opcode
   except RangeError:
-    ws.raiseReadException(ProtocolError, "received invalid opcode: " & repr(opc))
+    ws.raiseReadException(ProtocolError, "received invalid opcode: " & $opc)
 
   if f.rsv1 or f.rsv2 or f.rsv3:
     ws.raiseReadException(ProtocolError,
