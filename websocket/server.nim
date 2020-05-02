@@ -49,18 +49,18 @@ import private/hex
 import shared
 
 type HeaderVerificationError* {.pure.} = enum
-  none
+  None
     ## No error.
-  unsupportedVersion
+  UnsupportedVersion
     ## The Sec-Websocket-Version header gave an unsupported version.
     ## The only currently supported version is 13.
-  noKey
+  NoKey
     ## No Sec-Websocket-Key was provided.
-  protocolAdvertised
+  ProtocolAdvertised
     ## A protocol was advertised but the server gave no protocol.
-  noProtocolsSupported
+  NoProtocolsSupported
     ## None of the advertised protocols match the server protocol.
-  noProtocolAdvertised
+  NoProtocolAdvertised
     ## Server asked for a protocol but no protocol was advertised.
 
 proc `$`*(error: HeaderVerificationError): string =
@@ -92,14 +92,14 @@ proc verifyHeaders(
     # TODO: transparently support extensions
 
   if headers.getOrDefault("sec-websocket-version") != "13":
-    return ("", unsupportedVersion)
+    return ("", UnsupportedVersion)
 
   if not headers.hasKey("sec-websocket-key"):
-    return ("", noKey)
+    return ("", NoKey)
 
   if headers.hasKey("sec-websocket-protocol"):
     if protocol.len == 0:
-      return ("", protocolAdvertised)
+      return ("", ProtocolAdvertised)
 
     block protocolCheck:
       let prot = protocol.toLowerAscii()
@@ -108,11 +108,11 @@ proc verifyHeaders(
         if prot == it.strip.toLowerAscii():
           break protocolCheck
 
-      return ("",  noProtocolsSupported)
+      return ("",  NoProtocolsSupported)
   elif protocol.len != 0:
-    return ("", noProtocolAdvertised)
+    return ("", NoProtocolAdvertised)
 
-  return (makeHandshakeResponse(headers["sec-websocket-key"], protocol), none)
+  return (makeHandshakeResponse(headers["sec-websocket-key"], protocol), None)
 
 proc verifyWebsocketRequest*(
   client: AsyncSocket, headers: HttpHeaders, protocol = ""
@@ -134,7 +134,7 @@ proc verifyWebsocketRequest*(
   ## After successful negotiation, you can immediately start sending/reading
   ## websocket frames.
   let (handshake, error) = verifyHeaders(headers, protocol)
-  if error != HeaderVerificationError.none:
+  if error != HeaderVerificationError.None:
     return (nil, error)
 
   await client.send(handshake)
@@ -145,7 +145,7 @@ proc verifyWebsocketRequest*(
       sock: client,
       protocol: protocol
     ),
-    none
+    None
   )
 
 proc verifyWebsocketRequest*(

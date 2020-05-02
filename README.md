@@ -8,4 +8,4 @@ and features are missing - namely:
 
  * A robust RNG for the client data masking
 
-See [the API docs](http://niv.github.io/websocket.nim/docs/0.3.0/websocket.html) for usage instructions.
+See [the API docs](http://niv.github.io/websocket.nim/websocket.html) for usage instructions.
