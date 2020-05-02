@@ -102,26 +102,36 @@ function main() {
   <ul class="simple simple-toc-section">
       <li><a class="reference" href="#ProtocolError"
     title="ProtocolError = object of Defect"><wbr />Protocol<wbr />Error<span class="attachedType"></span></a></li>
+  <li><a class="reference" href="#MaskingKey"
+    title="MaskingKey = string"><wbr />Masking<wbr />Key<span class="attachedType"></span></a></li>
   <li><a class="reference" href="#Opcode"
     title="Opcode {.pure.} = enum
   Cont = 0x00000000,            ## Continued Frame (when the previous was fin = 0)
   Text = 0x00000001,            ## Text frames need to be valid UTF-8
   Binary = 0x00000002,          ## Binary frames can be anything.
-  Close = 0x00000008,           ## Socket is being closed by the remote, or we intend to close it.
+  Close = 0x00000008,           ## The remote is closing the socket or we intend to close it.
   Ping = 0x00000009,            ## Ping
-  Pong = 0x0000000A             ## Pong. Needs to echo back the app data in ping."><wbr />Opcode<span class="attachedType"></span></a></li>
+  Pong = 0x0000000A ## Pong. Needs to echo back the app data in ping.
+                 ## This library handles these by default but you can use
+                 ## ``-d:websocketIgnorePing`` to handle them yourself."><wbr />Opcode<span class="attachedType"></span></a></li>
   <li><a class="reference" href="#Frame"
-    title="Frame = tuple[fin: bool,         ## Last frame in current packet.
-            rsv1, rsv2, rsv3: bool, ## Extension data: negotiated in http prequel, or 0.
-            masked: bool,      ## If the frame was received masked/is supposed to be masked.
-            maskingKey: string, ## The masking key if the frame is supposed to be masked.
-                              ## If masked is false, this is an empty string.
-                              ## Otherwise, length is 4.
-            opcode: Opcode,    ## The opcode of this frame.
-            data: string]"><wbr />Frame<span class="attachedType"></span></a></li>
+    title="Frame = object
+  fin {.bitsize: 1.}: bool       ## Last frame in current packet.
+  rsv1 {.bitsize: 1.}, rsv2 {.bitsize: 1.}, rsv3 {.bitsize: 1.}: bool ## Extension data: negotiated in http prequel, or 0.
+  masked {.bitsize: 1.}: bool    ## If the frame was received masked/is supposed to be masked.
+  opcode {.bitsize: 4.}: Opcode  ## The opcode of this frame.
+  maskingKey: MaskingKey ## The masking key if the frame is supposed to be masked.
+                       ## If masked is false, this is an empty string.
+                       ## Otherwise, length is 4.
+  data: string                 ## App data"><wbr />Frame<span class="attachedType"></span></a></li>
   <li><a class="reference" href="#SocketKind"
     title="SocketKind {.pure.} = enum
   Client, Server"><wbr />Socket<wbr />Kind<span class="attachedType"></span></a></li>
+  <li><a class="reference" href="#AsyncWebSocketObj"
+    title="AsyncWebSocketObj = object
+  sock*: AsyncSocket
+  protocol*: string
+  kind*: SocketKind"><wbr />Async<wbr />Web<wbr />Socket<wbr />Obj<span class="attachedType"></span></a></li>
   <li><a class="reference" href="#AsyncWebSocket"
     title="AsyncWebSocket = ref AsyncWebSocketObj"><wbr />Async<wbr />Web<wbr />Socket<span class="attachedType"></span></a></li>
 
@@ -130,16 +140,14 @@ function main() {
 <li>
   <a class="reference reference-toplevel" href="#12" id="62">Procs</a>
   <ul class="simple simple-toc-section">
-      <li><a class="reference" href="#mask%2Cstring%2Cstring"
-    title="mask(data: var string; maskingKey: string)"><wbr />mask<span class="attachedType"></span></a></li>
+      <li><a class="reference" href="#mask%2Cstring%2CMaskingKey"
+    title="mask(data: var string; maskingKey: MaskingKey)"><wbr />mask<span class="attachedType">MaskingKey</span></a></li>
   <li><a class="reference" href="#generateMaskingKey"
-    title="generateMaskingKey(): string"><wbr />generate<wbr />Masking<wbr />Key<span class="attachedType"></span></a></li>
+    title="generateMaskingKey(): MaskingKey"><wbr />generate<wbr />Masking<wbr />Key<span class="attachedType">MaskingKey</span></a></li>
   <li><a class="reference" href="#makeFrame%2CFrame"
     title="makeFrame(f: Frame): string"><wbr />make<wbr />Frame<span class="attachedType">Frame</span></a></li>
   <li><a class="reference" href="#makeFrame%2COpcode%2Cstring"
     title="makeFrame(opcode: Opcode; data: string; maskingKey = generateMaskingKey()): string"><wbr />make<wbr />Frame<span class="attachedType"></span></a></li>
-  <li><a class="reference" href="#makeFrame%2COpcode%2Cstring%2Cbool"
-    title="makeFrame(opcode: Opcode; data: string; masked: bool): string"><wbr />make<wbr />Frame<span class="attachedType"></span></a></li>
   <li><a class="reference" href="#recvFrame%2CAsyncSocket"
     title="recvFrame(ws: AsyncSocket): Future[Frame]"><wbr />recv<wbr />Frame<span class="attachedType">Frame</span></a></li>
   <li><a class="reference" href="#extractCloseData%2Cstring"
@@ -147,15 +155,16 @@ function main() {
   <li><a class="reference" href="#readData%2CAsyncSocket"
     title="readData(ws: AsyncSocket): Future[tuple[opcode: Opcode, data: string]]"><wbr />read<wbr />Data<span class="attachedType"></span></a></li>
   <li><a class="reference" href="#sendText%2CAsyncSocket%2Cstring"
-    title="sendText(ws: AsyncSocket; p: string; maskingKey = generateMaskingKey()): Future[void]"><wbr />send<wbr />Text<span class="attachedType"></span></a></li>
+    title="sendText(sock: AsyncSocket; p: string; maskingKey = generateMaskingKey()): Future[void]"><wbr />send<wbr />Text<span class="attachedType"></span></a></li>
   <li><a class="reference" href="#sendBinary%2CAsyncSocket%2Cstring"
-    title="sendBinary(ws: AsyncSocket; p: string; maskingKey = generateMaskingKey()): Future[void]"><wbr />send<wbr />Binary<span class="attachedType"></span></a></li>
+    title="sendBinary(sock: AsyncSocket; p: string; maskingKey = generateMaskingKey()): Future[
+    void]"><wbr />send<wbr />Binary<span class="attachedType"></span></a></li>
   <li><a class="reference" href="#sendPing%2CAsyncSocket%2Cstring"
-    title="sendPing(ws: AsyncSocket; maskingKey = generateMaskingKey(); token: string = &quot;&quot;): Future[
+    title="sendPing(sock: AsyncSocket; maskingKey = generateMaskingKey(); token: string = &quot;&quot;): Future[
     void]"><wbr />send<wbr />Ping<span class="attachedType"></span></a></li>
-  <li><a class="reference" href="#sendChain%2CAsyncSocket%2Cseq%5Bstring%5D%2Cseq%5Bstring%5D"
-    title="sendChain(ws: AsyncSocket; p: seq[string]; opcode = Opcode.Text;
-          maskingKeys: seq[string] = @[]): Future[void]"><wbr />send<wbr />Chain<span class="attachedType"></span></a></li>
+  <li><a class="reference" href="#sendChain%2CAsyncSocket%2Cseq%5Bstring%5D%2Cseq%5BMaskingKey%5D"
+    title="sendChain(sock: AsyncSocket; p: seq[string]; opcode = Opcode.Text;
+          maskingKeys: seq[MaskingKey] = @[]): Future[void]"><wbr />send<wbr />Chain<span class="attachedType">MaskingKey</span></a></li>
   <li><a class="reference" href="#readData%2CAsyncWebSocket"
     title="readData(ws: AsyncWebSocket): Future[tuple[opcode: Opcode, data: string]]"><wbr />read<wbr />Data<span class="attachedType">AsyncWebSocket</span></a></li>
   <li><a class="reference" href="#sendText%2CAsyncWebSocket%2Cstring"
@@ -164,8 +173,8 @@ function main() {
     title="sendBinary(ws: AsyncWebSocket; p: string; maskingKey = generateMaskingKey()): Future[
     void]"><wbr />send<wbr />Binary<span class="attachedType">AsyncWebSocket</span></a></li>
   <li><a class="reference" href="#sendPing%2CAsyncWebSocket%2Cstring"
-    title="sendPing(ws: AsyncWebSocket; maskingKey = generateMaskingKey(); token: string = &quot;&quot;): owned(
-    Future[void])"><wbr />send<wbr />Ping<span class="attachedType">AsyncWebSocket</span></a></li>
+    title="sendPing(ws: AsyncWebSocket; maskingKey = generateMaskingKey(); token: string = &quot;&quot;): Future[
+    void]"><wbr />send<wbr />Ping<span class="attachedType">AsyncWebSocket</span></a></li>
   <li><a class="reference" href="#closeWebsocket%2CAsyncSocket%2Cint%2Cstring"
     title="closeWebsocket(ws: AsyncSocket; code = 0; reason = &quot;&quot;): Future[void]"><wbr />close<wbr />Websocket<span class="attachedType"></span></a></li>
   <li><a class="reference" href="#close%2CAsyncWebSocket%2Cint%2Cstring"
@@ -176,8 +185,8 @@ function main() {
 <li>
   <a class="reference reference-toplevel" href="#18" id="68">Templates</a>
   <ul class="simple simple-toc-section">
-      <li><a class="reference" href="#unmask.t%2Cstring%2Cstring"
-    title="unmask(data: var string; maskingKey: string): auto"><wbr />unmask<span class="attachedType"></span></a></li>
+      <li><a class="reference" href="#unmask.t%2Cstring%2CMaskingKey"
+    title="unmask(data: var string; maskingKey: MaskingKey): auto"><wbr />unmask<span class="attachedType">MaskingKey</span></a></li>
 
   </ul>
 </li>
@@ -203,39 +212,54 @@ class="link-seesrc" target="_blank">Source</a>
 <a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L5" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
+<a id="MaskingKey"></a>
+<dt><pre><a href="shared.html#MaskingKey"><span class="Identifier">MaskingKey</span></a> <span class="Other">=</span> <span class="Identifier">string</span></pre></dt>
+<dd>
+
+The type used as a masking key. This is <tt class="docutils literal"><span class="pre">string</span></tt> by default, use <tt class="docutils literal"><span class="pre">-d:websocketStricterMaskingKey</span></tt> to switch to <tt class="docutils literal"><span class="pre">array[4, char]</span></tt>.
+&nbsp;&nbsp;<a
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L12"
+class="link-seesrc" target="_blank">Source</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L12" class="link-seesrc" target="_blank" >Edit</a>
+
+</dd>
 <a id="Opcode"></a>
 <dt><pre><a href="shared.html#Opcode"><span class="Identifier">Opcode</span></a> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">pure</span></span><span class="Other">.}</span></span> <span class="Other">=</span> <span class="Keyword">enum</span>
   <span class="Identifier">Cont</span> <span class="Other">=</span> <span class="DecNumber">0x00000000</span><span class="Other">,</span>            <span class="Comment">## Continued Frame (when the previous was fin = 0)</span>
   <span class="Identifier">Text</span> <span class="Other">=</span> <span class="DecNumber">0x00000001</span><span class="Other">,</span>            <span class="Comment">## Text frames need to be valid UTF-8</span>
   <span class="Identifier">Binary</span> <span class="Other">=</span> <span class="DecNumber">0x00000002</span><span class="Other">,</span>          <span class="Comment">## Binary frames can be anything.</span>
-  <span class="Identifier">Close</span> <span class="Other">=</span> <span class="DecNumber">0x00000008</span><span class="Other">,</span>           <span class="Comment">## Socket is being closed by the remote, or we intend to close it.</span>
+  <span class="Identifier">Close</span> <span class="Other">=</span> <span class="DecNumber">0x00000008</span><span class="Other">,</span>           <span class="Comment">## The remote is closing the socket or we intend to close it.</span>
   <span class="Identifier">Ping</span> <span class="Other">=</span> <span class="DecNumber">0x00000009</span><span class="Other">,</span>            <span class="Comment">## Ping</span>
-  <span class="Identifier">Pong</span> <span class="Other">=</span> <span class="DecNumber">0x0000000A</span>             <span class="Comment">## Pong. Needs to echo back the app data in ping.</span></pre></dt>
+  <span class="Identifier">Pong</span> <span class="Other">=</span> <span class="DecNumber">0x0000000A</span> <span class="Comment">## Pong. Needs to echo back the app data in ping.</span>
+                 <span class="Comment">## This library handles these by default but you can use</span>
+                 <span class="Comment">## ``-d:websocketIgnorePing`` to handle them yourself.</span></pre></dt>
 <dd>
 
 
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L10"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L17"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L10" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L17" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="Frame"></a>
-<dt><pre><a href="shared.html#Frame"><span class="Identifier">Frame</span></a> <span class="Other">=</span> <span class="Keyword">tuple</span><span class="Other">[</span><span class="Identifier">fin</span><span class="Other">:</span> <span class="Identifier">bool</span><span class="Other">,</span>         <span class="Comment">## Last frame in current packet.</span>
-            <span class="Identifier">rsv1</span><span class="Other">,</span> <span class="Identifier">rsv2</span><span class="Other">,</span> <span class="Identifier">rsv3</span><span class="Other">:</span> <span class="Identifier">bool</span><span class="Other">,</span> <span class="Comment">## Extension data: negotiated in http prequel, or 0.</span>
-            <span class="Identifier">masked</span><span class="Other">:</span> <span class="Identifier">bool</span><span class="Other">,</span>      <span class="Comment">## If the frame was received masked/is supposed to be masked.</span>
-            <span class="Identifier">maskingKey</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">,</span> <span class="Comment">## The masking key if the frame is supposed to be masked.</span>
-                              <span class="Comment">## If masked is false, this is an empty string.</span>
-                              <span class="Comment">## Otherwise, length is 4.</span>
-            <span class="Identifier">opcode</span><span class="Other">:</span> <a href="shared.html#Opcode"><span class="Identifier">Opcode</span></a><span class="Other">,</span>    <span class="Comment">## The opcode of this frame.</span>
-            <span class="Identifier">data</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">]</span></pre></dt>
+<dt><pre><a href="shared.html#Frame"><span class="Identifier">Frame</span></a> <span class="Other">=</span> <span class="Keyword">object</span>
+  <span class="Identifier">fin</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">bitsize</span><span class="Other">:</span> <span class="DecNumber">1</span></span><span class="Other">.}</span></span><span class="Other">:</span> <span class="Identifier">bool</span>       <span class="Comment">## Last frame in current packet.</span>
+  <span class="Identifier">rsv1</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">bitsize</span><span class="Other">:</span> <span class="DecNumber">1</span></span><span class="Other">.}</span></span><span class="Other">,</span> <span class="Identifier">rsv2</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">bitsize</span><span class="Other">:</span> <span class="DecNumber">1</span></span><span class="Other">.}</span></span><span class="Other">,</span> <span class="Identifier">rsv3</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">bitsize</span><span class="Other">:</span> <span class="DecNumber">1</span></span><span class="Other">.}</span></span><span class="Other">:</span> <span class="Identifier">bool</span> <span class="Comment">## Extension data: negotiated in http prequel, or 0.</span>
+  <span class="Identifier">masked</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">bitsize</span><span class="Other">:</span> <span class="DecNumber">1</span></span><span class="Other">.}</span></span><span class="Other">:</span> <span class="Identifier">bool</span>    <span class="Comment">## If the frame was received masked/is supposed to be masked.</span>
+  <span class="Identifier">opcode</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">bitsize</span><span class="Other">:</span> <span class="DecNumber">4</span></span><span class="Other">.}</span></span><span class="Other">:</span> <a href="shared.html#Opcode"><span class="Identifier">Opcode</span></a>  <span class="Comment">## The opcode of this frame.</span>
+  <span class="Identifier">maskingKey</span><span class="Other">:</span> <a href="shared.html#MaskingKey"><span class="Identifier">MaskingKey</span></a> <span class="Comment">## The masking key if the frame is supposed to be masked.</span>
+                       <span class="Comment">## If masked is false, this is an empty string.</span>
+                       <span class="Comment">## Otherwise, length is 4.</span>
+  <span class="Identifier">data</span><span class="Other">:</span> <span class="Identifier">string</span>                 <span class="Comment">## App data</span>
+  </pre></dt>
 <dd>
 
 A frame read off the netlayer.
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L18"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L28"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L18" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L28" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="SocketKind"></a>
@@ -245,20 +269,35 @@ class="link-seesrc" target="_blank">Source</a>
 
 
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L35"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L47"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L35" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L47" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
-<a id="AsyncWebSocket"></a>
-<dt><pre><a href="shared.html#AsyncWebSocket"><span class="Identifier">AsyncWebSocket</span></a> <span class="Other">=</span> <span class="Keyword">ref</span> <span class="Identifier">AsyncWebSocketObj</span></pre></dt>
+<a id="AsyncWebSocketObj"></a>
+<dt><pre><a href="shared.html#AsyncWebSocketObj"><span class="Identifier">AsyncWebSocketObj</span></a> <span class="Other">=</span> <span class="Keyword">object</span>
+  <span class="Identifier">sock</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">AsyncSocket</span>
+  <span class="Identifier">protocol</span><span class="Operator">*</span><span class="Other">:</span> <span class="Identifier">string</span>
+  <span class="Identifier">kind</span><span class="Operator">*</span><span class="Other">:</span> <a href="shared.html#SocketKind"><span class="Identifier">SocketKind</span></a>
+</pre></dt>
 <dd>
 
 
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L43"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L50"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L43" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L50" class="link-seesrc" target="_blank" >Edit</a>
+
+</dd>
+<a id="AsyncWebSocket"></a>
+<dt><pre><a href="shared.html#AsyncWebSocket"><span class="Identifier">AsyncWebSocket</span></a> <span class="Other">=</span> <span class="Keyword">ref</span> <a href="shared.html#AsyncWebSocketObj"><span class="Identifier">AsyncWebSocketObj</span></a></pre></dt>
+<dd>
+
+A small wrapper around asyncnet.AsyncSocket that keeps track of whether the socket is a client or server and a string of the protocol being used to communicate.
+&nbsp;&nbsp;<a
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L55"
+class="link-seesrc" target="_blank">Source</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L55" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 
@@ -266,26 +305,26 @@ class="link-seesrc" target="_blank">Source</a>
 <div class="section" id="12">
 <h1><a class="toc-backref" href="#12">Procs</a></h1>
 <dl class="item">
-<a id="mask,string,string"></a>
-<dt><pre><span class="Keyword">proc</span> <a href="#mask%2Cstring%2Cstring"><span class="Identifier">mask</span></a><span class="Other">(</span><span class="Identifier">data</span><span class="Other">:</span> <span class="Keyword">var</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">maskingKey</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
+<a id="mask,string,MaskingKey"></a>
+<dt><pre><span class="Keyword">proc</span> <a href="#mask%2Cstring%2CMaskingKey"><span class="Identifier">mask</span></a><span class="Other">(</span><span class="Identifier">data</span><span class="Other">:</span> <span class="Keyword">var</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">maskingKey</span><span class="Other">:</span> <a href="shared.html#MaskingKey"><span class="Identifier">MaskingKey</span></a><span class="Other">)</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
 <dd>
 
 
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L69"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L84"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L69" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L84" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="generateMaskingKey"></a>
-<dt><pre><span class="Keyword">proc</span> <a href="#generateMaskingKey"><span class="Identifier">generateMaskingKey</span></a><span class="Other">(</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
+<dt><pre><span class="Keyword">proc</span> <a href="#generateMaskingKey"><span class="Identifier">generateMaskingKey</span></a><span class="Other">(</span><span class="Other">)</span><span class="Other">:</span> <a href="shared.html#MaskingKey"><span class="Identifier">MaskingKey</span></a> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
 <dd>
 
-
+Uses the <tt class="docutils literal"><span class="pre">random</span></tt> module of the standard library to generate a random 4 character string. Used by default. Not secure.
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L76"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L91"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L76" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L91" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="makeFrame,Frame"></a>
@@ -294,9 +333,9 @@ class="link-seesrc" target="_blank">Source</a>
 
 Generate valid websocket frame data, ready to be sent over the wire. This is useful for rolling your own impl, for example with AsyncHttpServer
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L92"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L111"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L92" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L111" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="makeFrame,Opcode,string"></a>
@@ -306,24 +345,9 @@ class="link-seesrc" target="_blank">Source</a>
 
 A convenience shorthand.
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L133"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L152"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L133" class="link-seesrc" target="_blank" >Edit</a>
-
-</dd>
-<a id="makeFrame,Opcode,string,bool"></a>
-<dt><pre><span class="Keyword">proc</span> <a href="#makeFrame%2COpcode%2Cstring%2Cbool"><span class="Identifier">makeFrame</span></a><span class="Other">(</span><span class="Identifier">opcode</span><span class="Other">:</span> <a href="shared.html#Opcode"><span class="Identifier">Opcode</span></a><span class="Other">;</span> <span class="Identifier">data</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">masked</span><span class="Other">:</span> <span class="Identifier">bool</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">string</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">deprecated</span><span class="Other">,</span>
-    <span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">ProtocolError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
-<dd>
-  <div class="deprecation-message">
-    <b>Deprecated</b> 
-  </div>
-
-A convenience shorthand. <strong>Deprecated since 0.3.2</strong>: Frames should always be masked, either call makeFrame(opcode, data) or call makeFrame(opcode, data, maskingKey).
-&nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L139"
-class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L139" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L152" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="recvFrame,AsyncSocket"></a>
@@ -335,9 +359,9 @@ class="link-seesrc" target="_blank">Source</a>
 <p>You probably want to use the higher-level variant, <tt class="docutils literal"><span class="pre">readData</span></tt>.</p>
 
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L148"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L162"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L148" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L162" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="extractCloseData,string"></a>
@@ -347,9 +371,9 @@ class="link-seesrc" target="_blank">Source</a>
 
 A way to get the close code and reason out of the data of a Close opcode.
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L211"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L230"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L211" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L230" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="readData,AsyncSocket"></a>
@@ -363,70 +387,58 @@ class="link-seesrc" target="_blank">Source</a>
 <p>Will raise IOError when the socket disconnects and ProtocolError on any websocket-related issues.</p>
 
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L231"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L252"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L231" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L252" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="sendText,AsyncSocket,string"></a>
-<dt><pre><span class="Keyword">proc</span> <a href="#sendText%2CAsyncSocket%2Cstring"><span class="Identifier">sendText</span></a><span class="Other">(</span><span class="Identifier">ws</span><span class="Other">:</span> <span class="Identifier">AsyncSocket</span><span class="Other">;</span> <span class="Identifier">p</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">maskingKey</span> <span class="Other">=</span> <span class="Identifier">generateMaskingKey</span><span class="Other">(</span><span class="Other">)</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span>
-    <span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">deprecated</span><span class="Other">:</span> <span class="StringLit">&quot;Use the AsyncWebSocket variant instead&quot;</span><span class="Other">,</span>
-           <span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
+<dt><pre><span class="Keyword">proc</span> <a href="#sendText%2CAsyncSocket%2Cstring"><span class="Identifier">sendText</span></a><span class="Other">(</span><span class="Identifier">sock</span><span class="Other">:</span> <span class="Identifier">AsyncSocket</span><span class="Other">;</span> <span class="Identifier">p</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">maskingKey</span> <span class="Other">=</span> <span class="Identifier">generateMaskingKey</span><span class="Other">(</span><span class="Other">)</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span>
+    <span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
 <dd>
-  <div class="deprecation-message">
-    <b>Deprecated:</b> Use the AsyncWebSocket variant instead
-  </div>
 
 Sends text data. Will only return after all data has been sent out.
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L285"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L306"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L285" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L306" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="sendBinary,AsyncSocket,string"></a>
-<dt><pre><span class="Keyword">proc</span> <a href="#sendBinary%2CAsyncSocket%2Cstring"><span class="Identifier">sendBinary</span></a><span class="Other">(</span><span class="Identifier">ws</span><span class="Other">:</span> <span class="Identifier">AsyncSocket</span><span class="Other">;</span> <span class="Identifier">p</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">maskingKey</span> <span class="Other">=</span> <span class="Identifier">generateMaskingKey</span><span class="Other">(</span><span class="Other">)</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span>
-    <span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">deprecated</span><span class="Other">:</span> <span class="StringLit">&quot;Use the AsyncWebSocket variant instead&quot;</span><span class="Other">,</span>
-           <span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
+<dt><pre><span class="Keyword">proc</span> <a href="#sendBinary%2CAsyncSocket%2Cstring"><span class="Identifier">sendBinary</span></a><span class="Other">(</span><span class="Identifier">sock</span><span class="Other">:</span> <span class="Identifier">AsyncSocket</span><span class="Other">;</span> <span class="Identifier">p</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">maskingKey</span> <span class="Other">=</span> <span class="Identifier">generateMaskingKey</span><span class="Other">(</span><span class="Other">)</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span>
+    <span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
 <dd>
-  <div class="deprecation-message">
-    <b>Deprecated:</b> Use the AsyncWebSocket variant instead
-  </div>
 
 Sends binary data. Will only return after all data has been sent out.
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L291"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L312"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L291" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L312" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="sendPing,AsyncSocket,string"></a>
-<dt><pre><span class="Keyword">proc</span> <a href="#sendPing%2CAsyncSocket%2Cstring"><span class="Identifier">sendPing</span></a><span class="Other">(</span><span class="Identifier">ws</span><span class="Other">:</span> <span class="Identifier">AsyncSocket</span><span class="Other">;</span> <span class="Identifier">maskingKey</span> <span class="Other">=</span> <span class="Identifier">generateMaskingKey</span><span class="Other">(</span><span class="Other">)</span><span class="Other">;</span> <span class="Identifier">token</span><span class="Other">:</span> <span class="Identifier">string</span> <span class="Other">=</span> <span class="StringLit">&quot;&quot;</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span>
-    <span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">deprecated</span><span class="Other">:</span> <span class="StringLit">&quot;Use the AsyncWebSocket variant instead&quot;</span><span class="Other">,</span>
-           <span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
+<dt><pre><span class="Keyword">proc</span> <a href="#sendPing%2CAsyncSocket%2Cstring"><span class="Identifier">sendPing</span></a><span class="Other">(</span><span class="Identifier">sock</span><span class="Other">:</span> <span class="Identifier">AsyncSocket</span><span class="Other">;</span> <span class="Identifier">maskingKey</span> <span class="Other">=</span> <span class="Identifier">generateMaskingKey</span><span class="Other">(</span><span class="Other">)</span><span class="Other">;</span> <span class="Identifier">token</span><span class="Other">:</span> <span class="Identifier">string</span> <span class="Other">=</span> <span class="StringLit">&quot;&quot;</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span>
+    <span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
 <dd>
-  <div class="deprecation-message">
-    <b>Deprecated:</b> Use the AsyncWebSocket variant instead
-  </div>
 
 Sends a WS ping message. Will generate a suitable token if you do not provide one.
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L297"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L318"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L297" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L318" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
-<a id="sendChain,AsyncSocket,seq[string],seq[string]"></a>
-<dt><pre><span class="Keyword">proc</span> <a href="#sendChain%2CAsyncSocket%2Cseq%5Bstring%5D%2Cseq%5Bstring%5D"><span class="Identifier">sendChain</span></a><span class="Other">(</span><span class="Identifier">ws</span><span class="Other">:</span> <span class="Identifier">AsyncSocket</span><span class="Other">;</span> <span class="Identifier">p</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">;</span> <span class="Identifier">opcode</span> <span class="Other">=</span> <a href="shared.html#Opcode"><span class="Identifier">Opcode</span></a><span class="Other">.</span><span class="Identifier">Text</span><span class="Other">;</span>
-              <span class="Identifier">maskingKeys</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span> <span class="Other">=</span> <span class="Operator">@</span><span class="Other">[</span><span class="Other">]</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span><span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma">
+<a id="sendChain,AsyncSocket,seq[string],seq[MaskingKey]"></a>
+<dt><pre><span class="Keyword">proc</span> <a href="#sendChain%2CAsyncSocket%2Cseq%5Bstring%5D%2Cseq%5BMaskingKey%5D"><span class="Identifier">sendChain</span></a><span class="Other">(</span><span class="Identifier">sock</span><span class="Other">:</span> <span class="Identifier">AsyncSocket</span><span class="Other">;</span> <span class="Identifier">p</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><span class="Identifier">string</span><span class="Other">]</span><span class="Other">;</span> <span class="Identifier">opcode</span> <span class="Other">=</span> <a href="shared.html#Opcode"><span class="Identifier">Opcode</span></a><span class="Other">.</span><span class="Identifier">Text</span><span class="Other">;</span>
+              <span class="Identifier">maskingKeys</span><span class="Other">:</span> <span class="Identifier">seq</span><span class="Other">[</span><a href="shared.html#MaskingKey"><span class="Identifier">MaskingKey</span></a><span class="Other">]</span> <span class="Other">=</span> <span class="Operator">@</span><span class="Other">[</span><span class="Other">]</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span><span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma">
     <span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
 <dd>
 
 Sends data over multiple frames. Will only return after all data has been sent out.
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L304"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L325"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L304" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L325" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="readData,AsyncWebSocket"></a>
@@ -440,46 +452,46 @@ class="link-seesrc" target="_blank">Source</a>
 <p>Will raise IOError when the socket disconnects and ProtocolError on any websocket-related issues.</p>
 
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L315"
-class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L315" class="link-seesrc" target="_blank" >Edit</a>
-
-</dd>
-<a id="sendText,AsyncWebSocket,string"></a>
-<dt><pre><span class="Keyword">proc</span> <a href="#sendText%2CAsyncWebSocket%2Cstring"><span class="Identifier">sendText</span></a><span class="Other">(</span><span class="Identifier">ws</span><span class="Other">:</span> <a href="shared.html#AsyncWebSocket"><span class="Identifier">AsyncWebSocket</span></a><span class="Other">;</span> <span class="Identifier">p</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">maskingKey</span> <span class="Other">=</span> <span class="Identifier">generateMaskingKey</span><span class="Other">(</span><span class="Other">)</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span>
-    <span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">,</span> <span class="Identifier">ProtocolError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
-<dd>
-
-Sends text data. Will only return after all data has been sent out.
-&nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L329"
-class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L329" class="link-seesrc" target="_blank" >Edit</a>
-
-</dd>
-<a id="sendBinary,AsyncWebSocket,string"></a>
-<dt><pre><span class="Keyword">proc</span> <a href="#sendBinary%2CAsyncWebSocket%2Cstring"><span class="Identifier">sendBinary</span></a><span class="Other">(</span><span class="Identifier">ws</span><span class="Other">:</span> <a href="shared.html#AsyncWebSocket"><span class="Identifier">AsyncWebSocket</span></a><span class="Other">;</span> <span class="Identifier">p</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">maskingKey</span> <span class="Other">=</span> <span class="Identifier">generateMaskingKey</span><span class="Other">(</span><span class="Other">)</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span>
-    <span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">,</span> <span class="Identifier">ProtocolError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
-<dd>
-
-Sends binary data. Will only return after all data has been sent out.
-&nbsp;&nbsp;<a
 href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L336"
 class="link-seesrc" target="_blank">Source</a>
 <a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L336" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
+<a id="sendText,AsyncWebSocket,string"></a>
+<dt><pre><span class="Keyword">proc</span> <a href="#sendText%2CAsyncWebSocket%2Cstring"><span class="Identifier">sendText</span></a><span class="Other">(</span><span class="Identifier">ws</span><span class="Other">:</span> <a href="shared.html#AsyncWebSocket"><span class="Identifier">AsyncWebSocket</span></a><span class="Other">;</span> <span class="Identifier">p</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">maskingKey</span> <span class="Other">=</span> <span class="Identifier">generateMaskingKey</span><span class="Other">(</span><span class="Other">)</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span>
+    <span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
+<dd>
+
+Sends text data. Will only return after all data has been sent out.
+&nbsp;&nbsp;<a
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L350"
+class="link-seesrc" target="_blank">Source</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L350" class="link-seesrc" target="_blank" >Edit</a>
+
+</dd>
+<a id="sendBinary,AsyncWebSocket,string"></a>
+<dt><pre><span class="Keyword">proc</span> <a href="#sendBinary%2CAsyncWebSocket%2Cstring"><span class="Identifier">sendBinary</span></a><span class="Other">(</span><span class="Identifier">ws</span><span class="Other">:</span> <a href="shared.html#AsyncWebSocket"><span class="Identifier">AsyncWebSocket</span></a><span class="Other">;</span> <span class="Identifier">p</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">maskingKey</span> <span class="Other">=</span> <span class="Identifier">generateMaskingKey</span><span class="Other">(</span><span class="Other">)</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span>
+    <span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">inline</span><span class="Other">,</span> <span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
+<dd>
+
+Sends binary data. Will only return after all data has been sent out.
+&nbsp;&nbsp;<a
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L357"
+class="link-seesrc" target="_blank">Source</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L357" class="link-seesrc" target="_blank" >Edit</a>
+
+</dd>
 <a id="sendPing,AsyncWebSocket,string"></a>
 <dt><pre><span class="Keyword">proc</span> <a href="#sendPing%2CAsyncWebSocket%2Cstring"><span class="Identifier">sendPing</span></a><span class="Other">(</span><span class="Identifier">ws</span><span class="Other">:</span> <a href="shared.html#AsyncWebSocket"><span class="Identifier">AsyncWebSocket</span></a><span class="Other">;</span> <span class="Identifier">maskingKey</span> <span class="Other">=</span> <span class="Identifier">generateMaskingKey</span><span class="Other">(</span><span class="Other">)</span><span class="Other">;</span>
-             <span class="Identifier">token</span><span class="Other">:</span> <span class="Identifier">string</span> <span class="Other">=</span> <span class="StringLit">&quot;&quot;</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">owned</span><span class="Other">(</span><span class="Identifier">Future</span><span class="Other">[</span><span class="Identifier">void</span><span class="Other">]</span><span class="Other">)</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma">
+             <span class="Identifier">token</span><span class="Other">:</span> <span class="Identifier">string</span> <span class="Other">=</span> <span class="StringLit">&quot;&quot;</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span><span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">inline</span><span class="Other">,</span>
     <span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">RootEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
 <dd>
 
-Sends a WS ping message. Will generate a suitable token if you do not provide one.
+Sends a WS ping message. Will generate a suitable token if you do not provide one. 
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L343"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L365"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L343" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L365" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="closeWebsocket,AsyncSocket,int,string"></a>
@@ -490,22 +502,22 @@ class="link-seesrc" target="_blank">Source</a>
 
 Closes the socket.
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L352"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L376"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L352" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L376" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 <a id="close,AsyncWebSocket,int,string"></a>
-<dt><pre><span class="Keyword">proc</span> <a href="#close%2CAsyncWebSocket%2Cint%2Cstring"><span class="Identifier">close</span></a><span class="Other">(</span><span class="Identifier">ws</span><span class="Other">:</span> <a href="shared.html#AsyncWebSocket"><span class="Identifier">AsyncWebSocket</span></a><span class="Other">;</span> <span class="Identifier">code</span> <span class="Other">=</span> <span class="DecNumber">0</span><span class="Other">;</span> <span class="Identifier">reason</span> <span class="Other">=</span> <span class="StringLit">&quot;&quot;</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span><span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma">
+<dt><pre><span class="Keyword">proc</span> <a href="#close%2CAsyncWebSocket%2Cint%2Cstring"><span class="Identifier">close</span></a><span class="Other">(</span><span class="Identifier">ws</span><span class="Other">:</span> <a href="shared.html#AsyncWebSocket"><span class="Identifier">AsyncWebSocket</span></a><span class="Other">;</span> <span class="Identifier">code</span> <span class="Other">=</span> <span class="DecNumber">0</span><span class="Other">;</span> <span class="Identifier">reason</span> <span class="Other">=</span> <span class="StringLit">&quot;&quot;</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">Future</span><span class="Other">[</span><span class="Identifier">void</span><span class="Other">]</span> <span><span class="Other">{</span><span class="Other pragmadots">...</span><span class="Other">}</span></span><span class="pragmawrap"><span class="Other">{.</span><span class="pragma"><span class="Identifier">inline</span><span class="Other">,</span>
     <span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">Exception</span><span class="Other">,</span> <span class="Identifier">FutureError</span><span class="Other">]</span><span class="Other">,</span>
     <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Identifier">RootEffect</span><span class="Other">,</span> <span class="Identifier">WriteIOEffect</span><span class="Other">,</span> <span class="Identifier">TimeEffect</span><span class="Other">,</span> <span class="Identifier">ReadIOEffect</span><span class="Other">]</span></span><span class="Other">.}</span></span></pre></dt>
 <dd>
 
 Closes the socket.
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L372"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L396"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L372" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L396" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 
@@ -513,15 +525,15 @@ class="link-seesrc" target="_blank">Source</a>
 <div class="section" id="18">
 <h1><a class="toc-backref" href="#18">Templates</a></h1>
 <dl class="item">
-<a id="unmask.t,string,string"></a>
-<dt><pre><span class="Keyword">template</span> <a href="#unmask.t%2Cstring%2Cstring"><span class="Identifier">unmask</span></a><span class="Other">(</span><span class="Identifier">data</span><span class="Other">:</span> <span class="Keyword">var</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">maskingKey</span><span class="Other">:</span> <span class="Identifier">string</span><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">auto</span></pre></dt>
+<a id="unmask.t,string,MaskingKey"></a>
+<dt><pre><span class="Keyword">template</span> <a href="#unmask.t%2Cstring%2CMaskingKey"><span class="Identifier">unmask</span></a><span class="Other">(</span><span class="Identifier">data</span><span class="Other">:</span> <span class="Keyword">var</span> <span class="Identifier">string</span><span class="Other">;</span> <span class="Identifier">maskingKey</span><span class="Other">:</span> <a href="shared.html#MaskingKey"><span class="Identifier">MaskingKey</span></a><span class="Other">)</span><span class="Other">:</span> <span class="Identifier">auto</span></pre></dt>
 <dd>
 
 
 &nbsp;&nbsp;<a
-href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L73"
+href="https://github.com/niv/websocket.nim/tree/master/websocket/shared.nim#L88"
 class="link-seesrc" target="_blank">Source</a>
-<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L73" class="link-seesrc" target="_blank" >Edit</a>
+<a href="https://github.com/niv/websocket.nim/edit/devel/websocket/shared.nim#L88" class="link-seesrc" target="_blank" >Edit</a>
 
 </dd>
 
@@ -534,7 +546,7 @@ class="link-seesrc" target="_blank">Source</a>
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br/>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2020-05-01 19:18:32 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2020-05-02 17:06:36 UTC</small>
       </div>
     </div>
   </div>
