@@ -1,4 +1,4 @@
-import ../websocket, asyncnet, asyncdispatch
+import ../websocket, asyncdispatch
 
 let ws = waitFor newAsyncWebsocketClient("localhost", Port(8080),
   path = "/", protocols = @["myfancyprotocol"])

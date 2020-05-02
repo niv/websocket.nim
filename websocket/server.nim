@@ -11,7 +11,7 @@
 ##
 ##     if ws.isNil:
 ##       echo "WS negotiation failed: ", error
-##       await req.respond(Http400, "Websocket negotiation failed: " & error)
+##       await req.respond(Http400, "Websocket negotiation failed: " & $error)
 ##       req.client.close()
 ##       return
 ##
@@ -23,9 +23,9 @@
 ##
 ##         case opcode
 ##         of Opcode.Text:
-##           waitFor ws.sendText("thanks for the data!")
+##           await ws.sendText("thanks for the data!")
 ##         of Opcode.Binary:
-##           waitFor ws.sendBinary(data)
+##           await ws.sendBinary(data)
 ##         of Opcode.Close:
 ##           asyncCheck ws.close()
 ##           let (closeCode, reason) = extractCloseData(data)
@@ -48,33 +48,58 @@ import private/hex
 
 import shared
 
+type HeaderVerificationError* {.pure.} = enum
+  None
+    ## No error.
+  UnsupportedVersion
+    ## The Sec-Websocket-Version header gave an unsupported version.
+    ## The only currently supported version is 13.
+  NoKey
+    ## No Sec-Websocket-Key was provided.
+  ProtocolAdvertised
+    ## A protocol was advertised but the server gave no protocol.
+  NoProtocolsSupported
+    ## None of the advertised protocols match the server protocol.
+  NoProtocolAdvertised
+    ## Server asked for a protocol but no protocol was advertised.
+
+proc `$`*(error: HeaderVerificationError): string =
+  const errorTable: array[HeaderVerificationError, string] = [
+    "no error",
+    "the only supported sec-websocket-version is 13",
+    "no sec-websocket-key provided",
+    "server does not support protocol negotation",
+    "no advertised protocol supported",
+    "no protocol advertised"
+  ]
+  result = errorTable[error]
+
 proc makeHandshakeResponse*(key, protocol: string): string =
   let sh = secureHash(key & "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
   let acceptKey = decodeHex($sh).encode
 
   result = "HTTP/1.1 101 Web Socket Protocol Handshake\c\L"
   result.add("Sec-Websocket-Accept: " & acceptKey & "\c\L")
-  result.add("Connection: Upgrade\c\L")
-  result.add("Upgrade: websocket\c\L")
+  result.add("Connection: Upgrade\c\LUpgrade: websocket\c\L")
   if protocol.len != 0:
     result.add("Sec-Websocket-Protocol: " & protocol & "\c\L")
   result.add "\c\L"
 
 proc verifyHeaders(
   headers: HttpHeaders, protocol: string
-): tuple[handshake: string, error: string] =
+): tuple[handshake: string, error: HeaderVerificationError] =
   # if headers.hasKey("sec-websocket-extensions"):
     # TODO: transparently support extensions
 
   if headers.getOrDefault("sec-websocket-version") != "13":
-    return ("", "the only supported sec-websocket-version is 13")
+    return ("", UnsupportedVersion)
 
   if not headers.hasKey("sec-websocket-key"):
-    return ("", "no sec-websocket-key provided")
+    return ("", NoKey)
 
   if headers.hasKey("sec-websocket-protocol"):
     if protocol.len == 0:
-      return ("", "server does not support protocol negotation")
+      return ("", ProtocolAdvertised)
 
     block protocolCheck:
       let prot = protocol.toLowerAscii()
@@ -83,15 +108,15 @@ proc verifyHeaders(
         if prot == it.strip.toLowerAscii():
           break protocolCheck
 
-      return ("",  "no advertised protocol supported; server speaks `" & protocol & "`")
+      return ("",  NoProtocolsSupported)
   elif protocol.len != 0:
-    return ("", "no protocol advertised, but server demands `" & protocol & "`")
+    return ("", NoProtocolAdvertised)
 
-  return (makeHandshakeResponse(headers["sec-websocket-key"], protocol), "")
+  return (makeHandshakeResponse(headers["sec-websocket-key"], protocol), None)
 
 proc verifyWebsocketRequest*(
   client: AsyncSocket, headers: HttpHeaders, protocol = ""
-): Future[tuple[ws: AsyncWebSocket, error: string]] {.async.} =
+): Future[tuple[ws: AsyncWebSocket, error: HeaderVerificationError]] {.async.} =
   ## Verifies the request is a websocket request:
   ## * Supports protocol version 13 only
   ## * Does not support extensions (yet)
@@ -109,7 +134,7 @@ proc verifyWebsocketRequest*(
   ## After successful negotiation, you can immediately start sending/reading
   ## websocket frames.
   let (handshake, error) = verifyHeaders(headers, protocol)
-  if error.len > 0:
+  if error != HeaderVerificationError.None:
     return (nil, error)
 
   await client.send(handshake)
@@ -120,11 +145,11 @@ proc verifyWebsocketRequest*(
       sock: client,
       protocol: protocol
     ),
-    ""
+    None
   )
 
 proc verifyWebsocketRequest*(
   req: asynchttpserver.Request, protocol = ""
-): Future[tuple[ws: AsyncWebSocket, error: string]] =
+): Future[tuple[ws: AsyncWebSocket, error: HeaderVerificationError]] =
   ## Convenience wrapper for AsyncHttpServer requests.
   return verifyWebsocketRequest(req.client, req.headers, protocol)

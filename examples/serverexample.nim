@@ -7,7 +7,7 @@ proc cb(req: Request) {.async.} =
 
   if ws.isNil:
     echo "WS negotiation failed: ", error
-    await req.respond(Http400, "Websocket negotiation failed: " & error)
+    await req.respond(Http400, "Websocket negotiation failed: " & $error)
     req.client.close()
     return
 
@@ -19,9 +19,9 @@ proc cb(req: Request) {.async.} =
 
       case opcode
       of Opcode.Text:
-        waitFor ws.sendText("thanks for the data!")
+        await ws.sendText("thanks for the data!")
       of Opcode.Binary:
-        waitFor ws.sendBinary(data)
+        await ws.sendBinary(data)
       of Opcode.Close:
         asyncCheck ws.close()
         let (closeCode, reason) = extractCloseData(data)
