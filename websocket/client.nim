@@ -41,7 +41,7 @@ when not declared(httpclient.getDefaultSsl):
     result = defaultSsl
     when defined(ssl):
       if result.isNil:
-        result = newContext(protTLSv1, verifyMode = CVerifyNone)
+        result = newContext(protSSLv23, verifyMode = CVerifyNone)
         doAssert(not result.isNil, "failure to initialize SSL context")
         defaultSsl = result
 
