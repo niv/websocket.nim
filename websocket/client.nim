@@ -79,7 +79,14 @@ proc newAsyncWebsocketClient*(uri: Uri, client: AsyncHttpClient,
   })
   if protocols.len != 0:
     headers["Sec-WebSocket-Protocol"] = protocols.join(", ")
-  let resp = await client.request($uri, "GET", headers = headers)
+  const getMethod =
+    when declared(HttpGet):
+      HttpGet
+    elif declared(httpGet):
+      httpGet
+    else:
+      "GET"
+  let resp = await client.request($uri, getMethod, headers = headers)
   if resp.code != Http101:
     client.getSocket().close()
     raise newException(ProtocolError,

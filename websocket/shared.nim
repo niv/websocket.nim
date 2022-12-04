@@ -1,5 +1,5 @@
 import asyncdispatch, asyncnet, streams, nativesockets,
-  strutils, times, oids, random, endians
+  strutils, times, oids, random, endians, macros
 
 when declared(system.Defect):
   type ProtocolError* = object of Defect
@@ -181,9 +181,13 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
   f.rsv2 = b0[2]
   f.rsv3 = b0[3]
   let opc = b0 and 0x0f
-  try:
-    f.opcode = opc.Opcode
-  except Exception:
+  const validOpcodes = block: # see setutils.fullSet
+    macro enumElementsAsSet(enm: typed): untyped =
+      result = newNimNode(nnkCurly).add(enm.getType[1][1..^1])
+    enumElementsAsSet(Opcode)
+  # Opcode enum has holes, so cast here
+  f.opcode = cast[Opcode](opc)
+  if f.opcode notin validOpcodes:
     ws.raiseReadException(ProtocolError, "received invalid opcode: " & $opc)
 
   if f.rsv1 or f.rsv2 or f.rsv3:
