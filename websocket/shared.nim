@@ -183,7 +183,7 @@ proc recvFrame*(ws: AsyncSocket): Future[Frame] {.async.} =
   let opc = b0 and 0x0f
   try:
     f.opcode = opc.Opcode
-  except RangeError:
+  except Exception:
     ws.raiseReadException(ProtocolError, "received invalid opcode: " & $opc)
 
   if f.rsv1 or f.rsv2 or f.rsv3:
@@ -352,7 +352,7 @@ proc sendText*(ws: AsyncWebSocket, p: string, maskingKey = generateMaskingKey())
   let maskingKey =
     if ws.kind == Server: default(MaskingKey)
     else: maskingKey
-  result = ws.sock.sendBinary(p, maskingKey)
+  result = ws.sock.sendText(p, maskingKey)
 
 proc sendBinary*(ws: AsyncWebSocket, p: string,
                  maskingKey = generateMaskingKey()): Future[void] {.inline.} =
