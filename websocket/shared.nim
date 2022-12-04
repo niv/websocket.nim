@@ -352,7 +352,7 @@ proc sendText*(ws: AsyncWebSocket, p: string, maskingKey = generateMaskingKey())
   let maskingKey =
     if ws.kind == Server: default(MaskingKey)
     else: maskingKey
-  result = ws.sock.sendBinary(p, maskingKey)
+  result = ws.sock.sendText(p, maskingKey)
 
 proc sendBinary*(ws: AsyncWebSocket, p: string,
                  maskingKey = generateMaskingKey()): Future[void] {.inline.} =
